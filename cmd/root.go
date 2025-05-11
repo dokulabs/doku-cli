@@ -1,51 +1,52 @@
 /*
 Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-
 */
 package cmd
 
 import (
+	"fmt"
 	"os"
+
+	"github.com/dokulabs/doku/cmd/cluster"
 
 	"github.com/spf13/cobra"
 )
 
+var cliName = "doku"
+var cliDescription = "Doku is a CLI tool to manage local development using kubernetes"
 
+var (
+	logLevel    string
+	version     = "dev"
+	showVersion bool
+)
 
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:   "doku",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+func main() {
+	var rootCmd = &cobra.Command{
+		Use:   cliName,
+		Short: cliDescription,
+		Long:  cliDescription,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if showVersion {
+				fmt.Printf("%s version %s\n", cliName, version)
+				os.Exit(0)
+			}
+		},
+	}
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
-}
+	rootCmd.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "Print the version of the CLI")
+	rootCmd.PersistentFlags().StringVarP(&logLevel, "log-level", "l", "info", "Log level (debug, info, warn, error)")
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
+	rootCmd.AddCommand(cluster.ManageCommand())
+
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-v" {
+			fmt.Printf("%s version: %s\n", cliName, version)
+			os.Exit(0)
+		}
+	}
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 }
-
-func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.doku.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-}
-
-

@@ -1,4 +1,4 @@
-module doku
+module github.com/dokulabs/doku
 
 go 1.24.3
 
