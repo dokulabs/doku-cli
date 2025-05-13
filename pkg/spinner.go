@@ -24,7 +24,7 @@ type Spinner struct {
 	noticeColor  *color.Color
 }
 
-// NewKindSpinner creates a new spinner with default configuration
+// NewSpinner creates a new spinner with default configuration
 func NewSpinner() *Spinner {
 	s := spinner.New(
 		spinner.CharSets[9],  // Same frames as your original
@@ -77,7 +77,7 @@ func (s *Spinner) UpdateMessage(format string, a ...interface{}) {
 	defer s.mutex.Unlock()
 
 	message := fmt.Sprintf(format, a...)
-	s.spinner.Suffix = " " + message
+	s.spinner.Suffix = " " + message + "\n"
 }
 
 // Success prints a success message
