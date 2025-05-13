@@ -4,7 +4,7 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cluster
 
 import (
-	"fmt"
+	"github.com/dokulabs/doku/pkg"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +19,26 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("status called")
+			spinner := pkg.NewSpinner()
+			spinner.Start("Detecting the Kubernetes...")
+
+			manager, err := pkg.GetClusterManager(spinner)
+			if err != nil {
+				spinner.Error("Failed get cluster information. Please run `doku init --overwrite` to reinitialise the project.", err)
+			}
+
+			if !manager.IsRunning() {
+				spinner.Notice("No cluster is running.")
+				spinner.StopSilently()
+				return
+			}
+
+			spinner.UpdateMessage("Getting %s cluster status...", manager.Name())
+			err = manager.Status()
+			if err != nil {
+				spinner.Error("Failed to get %s cluster status.", manager.Name(), err)
+			}
+			spinner.StopSilently()
 		},
 	}
 

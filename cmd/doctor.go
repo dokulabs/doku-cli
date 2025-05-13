@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/dokulabs/doku/pkg"
 	"github.com/spf13/cobra"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -38,7 +37,7 @@ func runDoctor(installMissing bool) {
 
 	cfg, err := pkg.ReadConfig(spinner)
 	if err != nil {
-		log.Fatalf("error loading config: %v", err)
+		spinner.Error("error loading config: %v", err)
 	}
 
 	osName := cfg.OS

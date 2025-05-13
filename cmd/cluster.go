@@ -15,10 +15,8 @@ var clusterCmd = &cobra.Command{
 }
 
 func init() {
-	clusterCmd.AddCommand(cluster.NewInitCmd())
 	clusterCmd.AddCommand(cluster.NewStartCmd())
 	clusterCmd.AddCommand(cluster.NewStatusCmd())
-	clusterCmd.AddCommand(cluster.NewInfoCmd())
 	clusterCmd.AddCommand(cluster.NewStopCmd())
 	clusterCmd.AddCommand(cluster.NewUninstallCmd())
 	rootCmd.AddCommand(clusterCmd)

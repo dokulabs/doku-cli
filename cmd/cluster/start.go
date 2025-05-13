@@ -4,32 +4,38 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cluster
 
 import (
-	"fmt"
+	"github.com/dokulabs/doku/pkg"
 	"github.com/spf13/cobra"
 )
 
 func NewStartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
-		Short: "A brief description of your command",
-		Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+		Short: "Start a kubernetes cluster using Docker driver",
+		Long: `This command initializes a local kubernetes cluster 
+using Docker as the container driver.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("start called")
+			spinner := pkg.NewSpinner()
+			spinner.Start("Detecting the Kubernetes...")
+			if !pkg.IsDockerRunning() {
+				spinner.Error("Docker is not running, Please start the docker and try again.")
+			}
+			manager, err := pkg.GetClusterManager(spinner)
+			if err != nil {
+				spinner.Error("Failed get cluster information. Please run `doku init --overwrite` to reinitialise the project.", err)
+			}
+			if manager.IsRunning() {
+				spinner.Notice("%s cluster is already running.", manager.Name())
+				spinner.StopSilently()
+				return
+			}
+
+			spinner.UpdateMessage("Starting %s cluster...", manager.Name())
+			err = manager.Start()
+			if err != nil {
+				spinner.Error("Failed starting %s cluster.", manager.Name(), err)
+			}
+			spinner.Stop("Started %s cluster.", manager.Name())
 		},
 	}
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// startCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// startCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

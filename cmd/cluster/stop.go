@@ -4,22 +4,36 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cluster
 
 import (
-	"fmt"
+	"github.com/dokulabs/doku/pkg"
 	"github.com/spf13/cobra"
 )
 
 func NewStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop",
-		Short: "A brief description of your command",
-		Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+		Short: "Stop Kubernetes cluster",
+		Long:  `Stop Kubernetes cluster`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("stop called")
+			spinner := pkg.NewSpinner()
+			spinner.Start("Detecting the Kubernetes...")
+
+			manager, err := pkg.GetClusterManager(spinner)
+			if err != nil {
+				spinner.Error("Failed get cluster information. Please run `doku init --overwrite` to reinitialise the project.", err)
+			}
+
+			if !manager.IsRunning() {
+				spinner.Notice("No cluster is running.")
+				spinner.StopSilently()
+				return
+			}
+
+			spinner.UpdateMessage("Stopping %s cluster...", manager.Name())
+			err = manager.Stop()
+			if err != nil {
+				spinner.Error("Failed stop %s cluster.", manager.Name(), err)
+			}
+			spinner.Stop("Stopped %s cluster.", manager.Name())
 		},
 	}
 
