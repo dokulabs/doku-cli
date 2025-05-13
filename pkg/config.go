@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -92,4 +93,59 @@ func ConfigExists() bool {
 		return false
 	}
 	return err == nil
+}
+
+func ReadConfig(spinner *Spinner) (*Config, error) {
+	if !ConfigExists() {
+		spinner.Info("Config does not exist. Run `doku init` to initialize it.")
+		spinner.StopSilently()
+		return nil, nil
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		spinner.Error("failed to get home directory: %v", err)
+		return nil, err
+	}
+
+	configPath := filepath.Join(homeDir, ConfigDirName, ConfigFileName)
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		spinner.Error("failed to read config file: %v", err)
+		return nil, err
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		spinner.Error("failed to parse config file: %v", err)
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
+func (c *Config) saveValue(key, value string) error {
+	if c.Settings == nil {
+		c.Settings = make(map[string]string)
+	}
+	c.Settings[key] = value
+
+	// Get full path to config file
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	configPath := filepath.Join(homeDir, ConfigDirName, ConfigFileName)
+
+	// Save updated config to file
+	return c.SaveToFile(configPath)
+}
+
+func SaveConfigValue(key, value string, spinner *Spinner) error {
+	cfg, err := ReadConfig(spinner)
+	if err != nil || cfg == nil {
+		return fmt.Errorf("config not found or failed to load")
+	}
+	return cfg.saveValue(key, value)
 }

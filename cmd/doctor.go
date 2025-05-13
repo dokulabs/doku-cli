@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"github.com/dokulabs/doku/pkg"
 	"github.com/spf13/cobra"
+	"log"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -36,7 +36,12 @@ func runDoctor(installMissing bool) {
 	spinner.Start("🔍 Running Doku system health check...")
 	time.Sleep(2 * time.Second)
 
-	osName := runtime.GOOS
+	cfg, err := pkg.ReadConfig(spinner)
+	if err != nil {
+		log.Fatalf("error loading config: %v", err)
+	}
+
+	osName := cfg.OS
 	common := []string{"kubectl", "curl", "helm"}
 	osTools := []string{"docker"}
 	var missing []string
@@ -93,8 +98,9 @@ func runDoctor(installMissing bool) {
 			spinner.Info("💡 Use '--install' or '-i' to install missing tools automatically.")
 		}
 	} else {
-		spinner.Stop("All required tools are present!")
+		spinner.Success("All required tools are present!")
 	}
+	spinner.StopSilently()
 }
 
 func isWSL() bool {
