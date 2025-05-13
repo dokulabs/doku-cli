@@ -3,8 +3,6 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
-
-	"github.com/spf13/cobra"
 )
 
 type MinikubeManager struct{}
@@ -31,7 +29,7 @@ func (m *MinikubeManager) IsRunning() bool {
 }
 
 func (m *MinikubeManager) Start() error {
-	cmd := exec.Command("minikube", "start")
+	cmd := exec.Command("minikube", "start", "--driver=docker")
 	return cmd.Run()
 }
 
@@ -40,44 +38,7 @@ func (m *MinikubeManager) Stop() error {
 	return cmd.Run()
 }
 
-func NewMinikubeCommand() *cobra.Command {
-	manager := &MinikubeManager{}
-	cmd := &cobra.Command{
-		Use:   "minikube",
-		Short: "Manage Minikube cluster",
-	}
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   "install",
-		Short: "Install Minikube",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return manager.Install()
-		},
-	})
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   "uninstall",
-		Short: "Uninstall Minikube",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return manager.Uninstall()
-		},
-	})
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   "start",
-		Short: "Start Minikube",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return manager.Start()
-		},
-	})
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   "stop",
-		Short: "Stop Minikube",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return manager.Stop()
-		},
-	})
-
-	return cmd
+func (m *MinikubeManager) Status() error {
+	cmd := exec.Command("minikube", "status")
+	return cmd.Run()
 }

@@ -58,16 +58,19 @@ func (s *Spinner) Start(format string, a ...interface{}) {
 
 // Stop ends the spinner animation and displays a final message if provided
 func (s *Spinner) Stop(format string, a ...interface{}) {
+	s.StopSilently()
+	if format != "" {
+		message := fmt.Sprintf(format, a...)
+		s.successColor.Printf("✓ %s\n", message)
+	}
+}
+
+func (s *Spinner) StopSilently() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	if s.spinner.Active() {
 		s.spinner.Stop()
-	}
-
-	if format != "" {
-		message := fmt.Sprintf(format, a...)
-		s.successColor.Printf("✓ %s\n", message)
 	}
 }
 

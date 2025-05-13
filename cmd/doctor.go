@@ -29,16 +29,6 @@ var doctorCmd = &cobra.Command{
 func init() {
 	doctorCmd.Flags().BoolVarP(&installMissing, "install", "i", false, "Attempt to install missing tools automatically")
 	rootCmd.AddCommand(doctorCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// doctorCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// doctorCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 func runDoctor(installMissing bool) {
@@ -48,7 +38,7 @@ func runDoctor(installMissing bool) {
 
 	osName := runtime.GOOS
 	common := []string{"kubectl", "curl", "helm"}
-	osTools := []string{"docker", "minikube"}
+	osTools := []string{"docker"}
 	var missing []string
 
 	// Define OS-specific tools
