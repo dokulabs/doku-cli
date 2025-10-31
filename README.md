@@ -99,6 +99,27 @@ doku env postgres
 doku remove postgres
 ```
 
+### Upgrade Doku CLI
+
+Keep your doku CLI up to date with the latest features and fixes:
+
+```bash
+# Check current version
+doku version
+
+# Upgrade to the latest version
+doku self upgrade
+
+# Upgrade without confirmation prompt
+doku self upgrade --force
+```
+
+The upgrade command will:
+- Check for the latest version on GitHub
+- Download the appropriate binary for your platform
+- Replace the current binary with the new version
+- Verify the installation
+
 ## Architecture
 
 ```
@@ -268,6 +289,8 @@ doku init --domain mydev.local
 |---------|-------------|
 | `doku init` | Initialize Doku on your system |
 | `doku version` | Show version information |
+| **CLI Management** | |
+| `doku self upgrade` | Upgrade doku to the latest version |
 | **Catalog** | |
 | `doku catalog` | Browse available services |
 | `doku catalog search <query>` | Search for services |
