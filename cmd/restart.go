@@ -47,6 +47,29 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	}
 	defer dockerClient.Close()
 
+	// Special handling for Traefik
+	if instanceName == "traefik" || instanceName == "doku-traefik" {
+		containerName := "doku-traefik"
+
+		// Check if exists
+		exists, err := dockerClient.ContainerExists(containerName)
+		if err != nil || !exists {
+			return fmt.Errorf("Traefik container not found. Run 'doku init' first")
+		}
+
+		fmt.Println("Restarting Traefik...")
+
+		timeout := 10
+		if err := dockerClient.ContainerRestart(containerName, &timeout); err != nil {
+			return fmt.Errorf("failed to restart Traefik: %w", err)
+		}
+
+		color.Green("✓ Traefik restarted successfully")
+		cfg, _ := cfgMgr.Get()
+		fmt.Printf("Dashboard: %s://traefik.%s\n", cfg.Preferences.Protocol, cfg.Preferences.Domain)
+		return nil
+	}
+
 	// Create service manager
 	serviceMgr := service.NewManager(dockerClient, cfgMgr)
 

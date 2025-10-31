@@ -62,6 +62,26 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 	defer dockerClient.Close()
 
+	// Prevent removal of Traefik (system component)
+	if instanceName == "traefik" || instanceName == "doku-traefik" {
+		fmt.Println()
+		color.Red("✗ Cannot remove Traefik")
+		fmt.Println()
+		color.Yellow("Traefik is a core system component required for all services.")
+		fmt.Println()
+		color.New(color.Bold).Println("To remove Traefik along with all Doku components:")
+		fmt.Printf("  %s\n", color.CyanString("doku uninstall"))
+		fmt.Println()
+		color.New(color.Faint).Println("This will remove:")
+		color.New(color.Faint).Println("  • All services")
+		color.New(color.Faint).Println("  • Traefik reverse proxy")
+		color.New(color.Faint).Println("  • Docker network")
+		color.New(color.Faint).Println("  • SSL certificates")
+		color.New(color.Faint).Println("  • All configuration")
+		fmt.Println()
+		return nil
+	}
+
 	// Create service manager
 	serviceMgr := service.NewManager(dockerClient, cfgMgr)
 

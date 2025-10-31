@@ -47,6 +47,36 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 	defer dockerClient.Close()
 
+	// Special handling for Traefik
+	if instanceName == "traefik" || instanceName == "doku-traefik" {
+		containerName := "doku-traefik"
+
+		// Check if exists
+		exists, err := dockerClient.ContainerExists(containerName)
+		if err != nil || !exists {
+			return fmt.Errorf("Traefik container not found. Run 'doku init' first")
+		}
+
+		// Check if already running
+		containerInfo, _ := dockerClient.ContainerInspect(containerName)
+		if containerInfo.State.Running {
+			color.Yellow("⚠️  Traefik is already running")
+			cfg, _ := cfgMgr.Get()
+			fmt.Printf("Dashboard: %s://traefik.%s\n", cfg.Preferences.Protocol, cfg.Preferences.Domain)
+			return nil
+		}
+
+		fmt.Println("Starting Traefik...")
+		if err := dockerClient.ContainerStart(containerInfo.ID); err != nil {
+			return fmt.Errorf("failed to start Traefik: %w", err)
+		}
+
+		color.Green("✓ Traefik started successfully")
+		cfg, _ := cfgMgr.Get()
+		fmt.Printf("Dashboard: %s://traefik.%s\n", cfg.Preferences.Protocol, cfg.Preferences.Domain)
+		return nil
+	}
+
 	// Create service manager
 	serviceMgr := service.NewManager(dockerClient, cfgMgr)
 

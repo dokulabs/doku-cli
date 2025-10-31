@@ -66,31 +66,57 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 	defer dockerClient.Close()
 
-	// Create service manager
-	serviceMgr := service.NewManager(dockerClient, cfgMgr)
+	// Special handling for Traefik
+	var containerName string
+	var isTraefik bool
 
-	// Get instance to check if it exists
-	instance, err := serviceMgr.Get(instanceName)
-	if err != nil {
-		return fmt.Errorf("service '%s' not found. Use 'doku list' to see installed services", instanceName)
-	}
+	if instanceName == "traefik" || instanceName == "doku-traefik" {
+		containerName = "doku-traefik"
+		isTraefik = true
 
-	// Check if service is running
-	status, err := serviceMgr.GetStatus(instanceName)
-	if err != nil {
-		color.Yellow("⚠️  Could not determine service status")
+		// Check if Traefik container exists
+		exists, err := dockerClient.ContainerExists(containerName)
+		if err != nil {
+			return fmt.Errorf("failed to check Traefik container: %w", err)
+		}
+		if !exists {
+			return fmt.Errorf("Traefik container not found. Run 'doku init' first")
+		}
+	} else {
+		// Regular service - get from service manager
+		serviceMgr := service.NewManager(dockerClient, cfgMgr)
+
+		// Get instance to check if it exists
+		instance, err := serviceMgr.Get(instanceName)
+		if err != nil {
+			return fmt.Errorf("service '%s' not found. Use 'doku list' to see installed services", instanceName)
+		}
+
+		containerName = instance.ContainerName
+
+		// Check if service is running
+		status, err := serviceMgr.GetStatus(instanceName)
+		if err != nil {
+			color.Yellow("⚠️  Could not determine service status")
+		}
+
+		// If not running and not following, just show available logs
+		if !logsFollow && status != "running" {
+			color.Yellow("Note: Service is not currently running. Showing historical logs.")
+			fmt.Println()
+		}
 	}
 
 	// Get logs using Docker client directly for better control
-	logsReader, err := dockerClient.ContainerLogs(instance.ContainerName, logsFollow)
+	logsReader, err := dockerClient.ContainerLogs(containerName, logsFollow)
 	if err != nil {
 		return fmt.Errorf("failed to get logs: %w", err)
 	}
 	defer logsReader.Close()
 
-	// If not running and not following, just show available logs
-	if !logsFollow && status != "running" {
-		color.Yellow("Note: Service is not currently running. Showing historical logs.")
+	// Show info about what we're viewing
+	if isTraefik && logsFollow {
+		color.New(color.Faint).Println("Viewing Traefik logs (Press Ctrl+C to stop)...")
 		fmt.Println()
 	}
 

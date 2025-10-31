@@ -65,6 +65,11 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	}
 	defer dockerClient.Close()
 
+	// Special handling for Traefik
+	if instanceName == "traefik" || instanceName == "doku-traefik" {
+		return displayTraefikInfo(cfg, dockerClient)
+	}
+
 	// Create service manager
 	serviceMgr := service.NewManager(dockerClient, cfgMgr)
 
@@ -298,4 +303,72 @@ func formatUptime(startedAt string) string {
 	// Parse Docker's time format
 	// This is a simplified version
 	return "Active" // Would need proper time parsing from Docker format
+}
+
+func displayTraefikInfo(cfg *types.Config, dockerClient *docker.Client) error {
+	containerName := "doku-traefik"
+
+	// Get container info from Docker
+	containerInfo, err := dockerClient.ContainerInspect(containerName)
+	if err != nil {
+		return fmt.Errorf("Traefik container not found. Run 'doku init' first")
+	}
+
+	// Determine status
+	var status types.ServiceStatus
+	if containerInfo.State.Running {
+		status = types.StatusRunning
+	} else {
+		status = types.StatusStopped
+	}
+
+	// Header
+	fmt.Println()
+	statusIcon := getInfoStatusIcon(status)
+	fmt.Printf("%s ", statusIcon)
+	color.New(color.Bold, color.FgCyan).Printf("Traefik (Reverse Proxy)")
+	fmt.Printf(" ")
+	getInfoStatusColor(status)(" [%s]", string(status))
+	fmt.Println()
+	fmt.Println(strings.Repeat("=", 40))
+	fmt.Println()
+
+	// Basic Information
+	color.New(color.Bold).Println("Service Information")
+	fmt.Printf("  Type: %s\n", color.CyanString("Traefik Reverse Proxy"))
+	fmt.Printf("  Container: %s\n", containerName)
+	if status == types.StatusRunning && containerInfo.State != nil {
+		fmt.Printf("  Uptime: %s\n", formatUptime(containerInfo.State.StartedAt))
+	}
+	fmt.Println()
+
+	// Access Information
+	color.New(color.Bold).Println("Access")
+	dashboardURL := fmt.Sprintf("%s://traefik.%s", cfg.Preferences.Protocol, cfg.Preferences.Domain)
+	fmt.Printf("  Dashboard: %s\n", color.GreenString(dashboardURL))
+	fmt.Printf("  HTTP Port: %d\n", cfg.Traefik.HTTPPort)
+	if cfg.Preferences.Protocol == "https" {
+		fmt.Printf("  HTTPS Port: %d\n", cfg.Traefik.HTTPSPort)
+	}
+	fmt.Println()
+
+	// Network Information
+	color.New(color.Bold).Println("Network")
+	fmt.Printf("  Network: %s\n", "doku-network")
+	fmt.Printf("  Role: %s\n", "Gateway for all services")
+	fmt.Println()
+
+	// Management Commands
+	color.New(color.Bold).Println("Management Commands")
+	if status == types.StatusRunning {
+		fmt.Println("  Stop:    " + color.CyanString("doku stop traefik"))
+		fmt.Println("  Restart: " + color.CyanString("doku restart traefik"))
+		fmt.Println("  Logs:    " + color.CyanString("doku logs traefik"))
+	} else {
+		fmt.Println("  Start:   " + color.CyanString("doku start traefik"))
+	}
+	fmt.Println("  Reinit:  " + color.CyanString("doku init"))
+	fmt.Println()
+
+	return nil
 }

@@ -72,6 +72,26 @@ func runEnv(cmd *cobra.Command, args []string) error {
 	}
 	defer dockerClient.Close()
 
+	// Special handling for Traefik
+	if instanceName == "traefik" || instanceName == "doku-traefik" {
+		containerName := "doku-traefik"
+
+		// Check if exists
+		exists, err := dockerClient.ContainerExists(containerName)
+		if err != nil || !exists {
+			return fmt.Errorf("Traefik container not found. Run 'doku init' first")
+		}
+
+		color.Yellow("⚠️  Traefik is a system component and doesn't have configurable environment variables")
+		fmt.Println()
+		color.New(color.Faint).Println("Traefik is configured through:")
+		color.New(color.Faint).Println("  • Traefik configuration files (static and dynamic)")
+		color.New(color.Faint).Println("  • Docker labels on service containers")
+		fmt.Println()
+		color.New(color.Faint).Println("Use 'doku info traefik' to see Traefik configuration details")
+		return nil
+	}
+
 	// Create service manager
 	serviceMgr := service.NewManager(dockerClient, cfgMgr)
 

@@ -47,6 +47,36 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 	defer dockerClient.Close()
 
+	// Special handling for Traefik
+	if instanceName == "traefik" || instanceName == "doku-traefik" {
+		containerName := "doku-traefik"
+
+		// Check if exists
+		exists, err := dockerClient.ContainerExists(containerName)
+		if err != nil || !exists {
+			return fmt.Errorf("Traefik container not found. Run 'doku init' first")
+		}
+
+		// Check if already stopped
+		containerInfo, _ := dockerClient.ContainerInspect(containerName)
+		if !containerInfo.State.Running {
+			color.Yellow("⚠️  Traefik is already stopped")
+			return nil
+		}
+
+		color.Yellow("⚠️  Warning: Stopping Traefik will make all services inaccessible")
+		fmt.Println("Stopping Traefik...")
+
+		timeout := 10
+		if err := dockerClient.ContainerStop(containerName, &timeout); err != nil {
+			return fmt.Errorf("failed to stop Traefik: %w", err)
+		}
+
+		color.Green("✓ Traefik stopped successfully")
+		color.New(color.Faint).Println("Use 'doku start traefik' to start it again")
+		return nil
+	}
+
 	// Create service manager
 	serviceMgr := service.NewManager(dockerClient, cfgMgr)
 
