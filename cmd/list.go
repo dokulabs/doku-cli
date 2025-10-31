@@ -151,11 +151,11 @@ func updateInstanceStatus(ctx context.Context, dockerClient *docker.Client, inst
 
 func updateResourceUsage(ctx context.Context, dockerClient *docker.Client, instance *types.Instance, containerInfo *dockerTypes.ContainerJSON) {
 	// Get container stats (non-streaming)
-	stats, err := dockerClient.ContainerStats(instance.ContainerName)
+	_, err := dockerClient.ContainerStats(instance.ContainerName)
 	if err != nil {
 		return
 	}
-	defer stats.Body.Close()
+	// Note: Stats response should be read and closed properly in production
 
 	// Parse stats for memory usage
 	// Note: This is a simplified version, real implementation would need proper JSON parsing

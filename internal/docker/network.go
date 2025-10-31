@@ -3,7 +3,6 @@ package docker
 import (
 	"fmt"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/network"
 )
 
@@ -68,10 +67,11 @@ func (nm *NetworkManager) CreateBridgeNetwork(name, subnet, gateway string) (str
 		},
 	}
 
-	options := types.NetworkCreate{
+	enableIPv6 := false
+	options := network.CreateOptions{
 		Driver:     "bridge",
 		IPAM:       ipam,
-		EnableIPv6: false,
+		EnableIPv6: &enableIPv6,
 		Labels: map[string]string{
 			"managed-by": "doku",
 			"doku.network": "true",
@@ -87,7 +87,7 @@ func (nm *NetworkManager) CreateBridgeNetwork(name, subnet, gateway string) (str
 }
 
 // GetNetworkByName retrieves a network by name
-func (nm *NetworkManager) GetNetworkByName(name string) (*types.NetworkResource, error) {
+func (nm *NetworkManager) GetNetworkByName(name string) (*network.Inspect, error) {
 	networks, err := nm.client.NetworkList()
 	if err != nil {
 		return nil, err
@@ -141,18 +141,18 @@ func (nm *NetworkManager) RemoveDokuNetwork(networkName string) error {
 }
 
 // GetNetworkInfo returns information about a network
-func (nm *NetworkManager) GetNetworkInfo(networkName string) (types.NetworkResource, error) {
+func (nm *NetworkManager) GetNetworkInfo(networkName string) (network.Inspect, error) {
 	return nm.client.NetworkInspect(networkName)
 }
 
 // ListDokuNetworks lists all networks managed by Doku
-func (nm *NetworkManager) ListDokuNetworks() ([]types.NetworkResource, error) {
+func (nm *NetworkManager) ListDokuNetworks() ([]network.Inspect, error) {
 	allNetworks, err := nm.client.NetworkList()
 	if err != nil {
 		return nil, err
 	}
 
-	dokuNetworks := []types.NetworkResource{}
+	dokuNetworks := []network.Inspect{}
 	for _, network := range allNetworks {
 		// Check if network is managed by Doku
 		if labels := network.Labels; labels != nil {

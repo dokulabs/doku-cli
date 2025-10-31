@@ -162,10 +162,10 @@ func (c *Client) ContainerLogs(containerID string, follow bool) (io.ReadCloser, 
 }
 
 // ContainerStats returns resource usage statistics for a container
-func (c *Client) ContainerStats(containerID string) (types.ContainerStats, error) {
+func (c *Client) ContainerStats(containerID string) (container.StatsResponseReader, error) {
 	stats, err := c.cli.ContainerStats(c.ctx, containerID, false)
 	if err != nil {
-		return types.ContainerStats{}, fmt.Errorf("failed to get container stats: %w", err)
+		return container.StatsResponseReader{}, fmt.Errorf("failed to get container stats: %w", err)
 	}
 	return stats, nil
 }
@@ -192,7 +192,7 @@ func (c *Client) ContainerExists(containerName string) (bool, error) {
 
 // ImagePull pulls an image from a registry
 func (c *Client) ImagePull(imageName string) error {
-	out, err := c.cli.ImagePull(c.ctx, imageName, types.ImagePullOptions{})
+	out, err := c.cli.ImagePull(c.ctx, imageName, image.PullOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
@@ -205,7 +205,7 @@ func (c *Client) ImagePull(imageName string) error {
 
 // ImageList lists available images
 func (c *Client) ImageList() ([]image.Summary, error) {
-	images, err := c.cli.ImageList(c.ctx, types.ImageListOptions{})
+	images, err := c.cli.ImageList(c.ctx, image.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list images: %w", err)
 	}
@@ -214,7 +214,7 @@ func (c *Client) ImageList() ([]image.Summary, error) {
 
 // ImageRemove removes an image
 func (c *Client) ImageRemove(imageID string, force bool) error {
-	options := types.ImageRemoveOptions{
+	options := image.RemoveOptions{
 		Force: force,
 	}
 
@@ -302,7 +302,7 @@ func (c *Client) VolumeExists(volumeName string) (bool, error) {
 // Network Operations
 
 // NetworkCreate creates a new network
-func (c *Client) NetworkCreate(networkName string, options types.NetworkCreate) (string, error) {
+func (c *Client) NetworkCreate(networkName string, options network.CreateOptions) (string, error) {
 	resp, err := c.cli.NetworkCreate(c.ctx, networkName, options)
 	if err != nil {
 		return "", fmt.Errorf("failed to create network: %w", err)
@@ -319,8 +319,8 @@ func (c *Client) NetworkRemove(networkID string) error {
 }
 
 // NetworkList lists all networks
-func (c *Client) NetworkList() ([]types.NetworkResource, error) {
-	networks, err := c.cli.NetworkList(c.ctx, types.NetworkListOptions{})
+func (c *Client) NetworkList() ([]network.Inspect, error) {
+	networks, err := c.cli.NetworkList(c.ctx, network.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list networks: %w", err)
 	}
@@ -328,12 +328,12 @@ func (c *Client) NetworkList() ([]types.NetworkResource, error) {
 }
 
 // NetworkInspect returns detailed information about a network
-func (c *Client) NetworkInspect(networkID string) (types.NetworkResource, error) {
-	network, err := c.cli.NetworkInspect(c.ctx, networkID, types.NetworkInspectOptions{})
+func (c *Client) NetworkInspect(networkID string) (network.Inspect, error) {
+	net, err := c.cli.NetworkInspect(c.ctx, networkID, network.InspectOptions{})
 	if err != nil {
-		return types.NetworkResource{}, fmt.Errorf("failed to inspect network: %w", err)
+		return network.Inspect{}, fmt.Errorf("failed to inspect network: %w", err)
 	}
-	return network, nil
+	return net, nil
 }
 
 // NetworkExists checks if a network exists

@@ -7,7 +7,7 @@ import (
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/pkg/types"
-	dockerTypes "github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 )
 
 // Manager handles service instance management
@@ -202,15 +202,15 @@ func (m *Manager) GetStatus(instanceName string) (types.ServiceStatus, error) {
 }
 
 // GetStats retrieves resource usage statistics
-func (m *Manager) GetStats(instanceName string) (dockerTypes.ContainerStats, error) {
+func (m *Manager) GetStats(instanceName string) (container.StatsResponseReader, error) {
 	instance, err := m.configMgr.GetInstance(instanceName)
 	if err != nil {
-		return dockerTypes.ContainerStats{}, fmt.Errorf("instance not found: %w", err)
+		return container.StatsResponseReader{}, fmt.Errorf("instance not found: %w", err)
 	}
 
 	stats, err := m.dockerClient.ContainerStats(instance.ContainerName)
 	if err != nil {
-		return dockerTypes.ContainerStats{}, fmt.Errorf("failed to get container stats: %w", err)
+		return container.StatsResponseReader{}, fmt.Errorf("failed to get container stats: %w", err)
 	}
 
 	return stats, nil
