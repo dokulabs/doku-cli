@@ -13,10 +13,10 @@ func TestValidateDomain(t *testing.T) {
 		{"my-domain.dev", false},
 		{"example.com", false},
 		{"sub.domain.local", false},
-		{"", true},                     // Empty
-		{"-invalid.local", true},       // Starts with hyphen
-		{"invalid-.local", true},       // Ends with hyphen
-		{"inv@lid.local", true},        // Invalid character
+		{"", true},                         // Empty
+		{"-invalid.local", true},           // Starts with hyphen
+		{"invalid-.local", true},           // Ends with hyphen
+		{"inv@lid.local", true},            // Invalid character
 		{"spaces not allowed.local", true}, // Spaces
 	}
 
@@ -40,14 +40,14 @@ func TestValidateInstanceName(t *testing.T) {
 		{"my-app", false},
 		{"app123", false},
 		{"a", false},
-		{"", true},                // Empty
-		{"Uppercase", true},       // Uppercase
-		{"-invalid", true},        // Starts with hyphen
-		{"invalid-", true},        // Ends with hyphen
-		{"inv@lid", true},         // Invalid character
-		{"traefik", true},         // Reserved name
-		{"123-app", true},         // Starts with number but ends with valid
-		{"app_name", true},        // Underscore not allowed
+		{"", true},          // Empty
+		{"Uppercase", true}, // Uppercase
+		{"-invalid", true},  // Starts with hyphen
+		{"invalid-", true},  // Ends with hyphen
+		{"inv@lid", true},   // Invalid character
+		{"traefik", true},   // Reserved name
+		{"123-app", true},   // Starts with number but ends with valid
+		{"app_name", true},  // Underscore not allowed
 	}
 
 	for _, tt := range tests {
@@ -94,10 +94,10 @@ func TestSanitizeMemoryLimit(t *testing.T) {
 		{"1g", "1g", false},
 		{"1G", "1g", false},
 		{"256k", "256k", false},
-		{"100", "", true},      // Missing unit
-		{"", "", true},         // Empty
-		{"invalid", "", true},  // Invalid format
-		{"1.5g", "", true},     // Decimal not supported
+		{"100", "", true},     // Missing unit
+		{"", "", true},        // Empty
+		{"invalid", "", true}, // Invalid format
+		{"1.5g", "", true},    // Decimal not supported
 	}
 
 	for _, tt := range tests {
@@ -124,9 +124,9 @@ func TestSanitizeCPULimit(t *testing.T) {
 		{"0.5", "0.5", false},
 		{"2.0", "2.0", false},
 		{"4", "4", false},
-		{"", "", true},         // Empty
-		{"invalid", "", true},  // Invalid format
-		{"1.5.2", "", true},    // Multiple decimals
+		{"", "", true},        // Empty
+		{"invalid", "", true}, // Invalid format
+		{"1.5.2", "", true},   // Multiple decimals
 	}
 
 	for _, tt := range tests {
@@ -179,8 +179,8 @@ func TestParseMemoryToBytes(t *testing.T) {
 		{"2G", 2 * 1024 * 1024 * 1024, false},
 		{"256k", 256 * 1024, false},
 		{"1024", 1024 * 1024 * 1024, false}, // Defaults to MB
-		{"", 0, true},                        // Empty
-		{"invalid", 0, true},                 // Invalid format
+		{"", 0, true},                       // Empty
+		{"invalid", 0, true},                // Invalid format
 	}
 
 	for _, tt := range tests {

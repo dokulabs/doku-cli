@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	dockerTypes "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/pkg/types"
-	dockerTypes "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/mount"
 )
 
 // Installer handles service installation

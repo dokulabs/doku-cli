@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/dokulabs/doku-cli/internal/config"
-	"github.com/dokulabs/doku-cli/internal/service"
 	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/service"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )

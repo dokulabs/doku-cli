@@ -14,17 +14,17 @@ const (
 
 // Service represents a service from the catalog
 type Service struct {
-	Name        string
-	DisplayName string
-	Description string
-	Category    string
-	Icon        string
-	Tags        []string
+	Name         string
+	DisplayName  string
+	Description  string
+	Category     string
+	Icon         string
+	Tags         []string
 	OfficialDocs string
-	Versions    VersionConfig
-	Docker      DockerConfig
-	Traefik     TraefikConfig
-	Discovery   DiscoveryConfig
+	Versions     VersionConfig
+	Docker       DockerConfig
+	Traefik      TraefikConfig
+	Discovery    DiscoveryConfig
 }
 
 // VersionConfig holds version information
@@ -47,10 +47,10 @@ type DockerConfig struct {
 
 // PortConfig defines a port mapping
 type PortConfig struct {
-	Container     int
-	HostDefault   int
-	Description   string
-	ExposeToHost  bool
+	Container    int
+	HostDefault  int
+	Description  string
+	ExposeToHost bool
 }
 
 // EnvVar defines an environment variable
@@ -80,11 +80,11 @@ type HealthCheck struct {
 
 // TraefikConfig holds Traefik routing configuration
 type TraefikConfig struct {
-	Enabled        bool
-	Port           int
+	Enabled         bool
+	Port            int
 	HasWebInterface bool
-	WebPort        int
-	CustomRules    []string
+	WebPort         int
+	CustomRules     []string
 }
 
 // DiscoveryConfig holds service discovery metadata
@@ -99,20 +99,20 @@ type DiscoveryConfig struct {
 
 // Instance represents an installed service instance
 type Instance struct {
-	Name            string
-	ServiceType     string
-	Version         string
-	Status          ServiceStatus
-	ContainerName   string
-	URL             string
+	Name             string
+	ServiceType      string
+	Version          string
+	Status           ServiceStatus
+	ContainerName    string
+	URL              string
 	ConnectionString string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	Network         NetworkConfig
-	Resources       ResourceConfig
-	Traefik         TraefikInstanceConfig
-	Volumes         map[string]string
-	Environment     map[string]string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Network          NetworkConfig
+	Resources        ResourceConfig
+	Traefik          TraefikInstanceConfig
+	Volumes          map[string]string
+	Environment      map[string]string
 }
 
 // NetworkConfig holds network configuration for an instance
@@ -154,12 +154,12 @@ type Project struct {
 
 // Config represents the main Doku configuration
 type Config struct {
-	Preferences PreferencesConfig
-	Network     NetworkGlobalConfig
-	Traefik     TraefikGlobalConfig
+	Preferences  PreferencesConfig
+	Network      NetworkGlobalConfig
+	Traefik      TraefikGlobalConfig
 	Certificates CertificatesConfig
-	Instances   map[string]*Instance
-	Projects    map[string]*Project
+	Instances    map[string]*Instance
+	Projects     map[string]*Project
 }
 
 // PreferencesConfig holds user preferences
@@ -180,12 +180,12 @@ type NetworkGlobalConfig struct {
 
 // TraefikGlobalConfig holds Traefik global configuration
 type TraefikGlobalConfig struct {
-	ContainerName   string
-	Status          ServiceStatus
+	ContainerName    string
+	Status           ServiceStatus
 	DashboardEnabled bool
-	HTTPPort        int
-	HTTPSPort       int
-	DashboardURL    string
+	HTTPPort         int
+	HTTPSPort        int
+	DashboardURL     string
 }
 
 // CertificatesConfig holds SSL certificate configuration

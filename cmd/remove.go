@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	removeForce  bool
-	removeYes    bool
+	removeForce bool
+	removeYes   bool
 )
 
 var removeCmd = &cobra.Command{

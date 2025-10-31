@@ -5,11 +5,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
+	"github.com/dokulabs/doku-cli/internal/docker"
 )
 
 const (
@@ -91,7 +91,7 @@ func (m *Manager) StartContainer() error {
 		RestartPolicy: container.RestartPolicy{
 			Name: "unless-stopped",
 		},
-		Mounts: m.createMounts(),
+		Mounts:       m.createMounts(),
 		PortBindings: m.createPortBindings(),
 	}
 

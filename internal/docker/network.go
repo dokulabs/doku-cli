@@ -73,7 +73,7 @@ func (nm *NetworkManager) CreateBridgeNetwork(name, subnet, gateway string) (str
 		IPAM:       ipam,
 		EnableIPv6: &enableIPv6,
 		Labels: map[string]string{
-			"managed-by": "doku",
+			"managed-by":   "doku",
 			"doku.network": "true",
 		},
 	}

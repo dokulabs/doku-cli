@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
+	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/internal/service"
 	"github.com/dokulabs/doku-cli/pkg/types"
-	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )

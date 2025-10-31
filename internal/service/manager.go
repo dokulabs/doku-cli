@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/pkg/types"
-	"github.com/docker/docker/api/types/container"
 )
 
 // Manager handles service instance management

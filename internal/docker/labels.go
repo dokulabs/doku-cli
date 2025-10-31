@@ -122,8 +122,8 @@ func GenerateTraefikLabelsForDashboard(domain string, useTLS bool) map[string]st
 
 	labels := map[string]string{
 		"traefik.enable": "true",
-		fmt.Sprintf("traefik.http.routers.%s.rule", config.RouterName): fmt.Sprintf("Host(`%s.%s`)", config.Subdomain, config.Domain),
-		fmt.Sprintf("traefik.http.routers.%s.service", config.RouterName): "api@internal",
+		fmt.Sprintf("traefik.http.routers.%s.rule", config.RouterName):        fmt.Sprintf("Host(`%s.%s`)", config.Subdomain, config.Domain),
+		fmt.Sprintf("traefik.http.routers.%s.service", config.RouterName):     "api@internal",
 		fmt.Sprintf("traefik.http.routers.%s.entrypoints", config.RouterName): config.EntryPoint,
 	}
 
