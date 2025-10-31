@@ -22,6 +22,7 @@ var catalogCmd = &cobra.Command{
 	Use:   "catalog",
 	Short: "Manage service catalog",
 	Long:  `Browse, search, and update the Doku service catalog`,
+	RunE:  runCatalogList, // Default to listing services
 }
 
 var catalogListCmd = &cobra.Command{

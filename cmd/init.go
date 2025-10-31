@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/certs"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/dns"
@@ -265,10 +266,33 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to update Traefik status: %w", err)
 	}
 
-	// TODO: Step 8: Download catalog (will implement in Phase 3)
+	// Step 8: Download catalog
 	stepNum++
-	printStep(stepNum, "Service catalog")
-	color.Yellow("⚠️  Catalog download will be implemented in the next phase")
+	printStep(stepNum, "Downloading service catalog")
+
+	catalogMgr := catalog.NewManager(cfgMgr.GetCatalogDir())
+
+	// Try to fetch catalog
+	if err := catalogMgr.FetchCatalog(); err != nil {
+		color.Yellow("⚠️  Could not download catalog from GitHub: %v", err)
+		color.Yellow("Catalog will be available after running: doku catalog update")
+	} else {
+		// Validate catalog
+		if err := catalogMgr.ValidateCatalog(); err != nil {
+			color.Yellow("⚠️  Catalog validation failed: %v", err)
+		} else {
+			// Get catalog version and count services
+			version, _ := catalogMgr.GetCatalogVersion()
+			services, _ := catalogMgr.ListServices()
+
+			printSuccess(fmt.Sprintf("Catalog downloaded (version: %s, services: %d)", version, len(services)))
+
+			// Update config with catalog version
+			if version != "" {
+				cfgMgr.UpdateCatalogVersion(version)
+			}
+		}
+	}
 
 	// Final success message
 	printHeader("Setup Complete! 🎉")
@@ -282,6 +306,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	if !initSkipDNS {
 		color.Green("✓ DNS: Configured")
+	}
+	if catalogMgr.CatalogExists() {
+		services, _ := catalogMgr.ListServices()
+		color.Green(fmt.Sprintf("✓ Catalog: %d services available", len(services)))
 	}
 
 	fmt.Println()
