@@ -187,9 +187,22 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 			if err := dnsMgr.AddDokuDomain(initDomain); err != nil {
 				color.Yellow("⚠️  Failed to automatically configure DNS")
-				color.Yellow(fmt.Sprintf("Please add the following to %s:", dnsMgr.GetHostsFilePath()))
-				color.Yellow(fmt.Sprintf("  127.0.0.1 %s", initDomain))
-				color.Yellow(fmt.Sprintf("  127.0.0.1 *.%s", initDomain))
+				fmt.Println()
+				color.New(color.Bold, color.FgYellow).Println("Manual DNS Setup Required:")
+				fmt.Println()
+				color.New(color.Bold).Printf("Add entries to %s:\n", dnsMgr.GetHostsFilePath())
+				fmt.Println()
+				fmt.Printf("  sudo sh -c \"cat >> %s << 'EOF'\n", dnsMgr.GetHostsFilePath())
+				fmt.Println("# Doku local development")
+				color.Cyan("127.0.0.1 %s", initDomain)
+				color.Cyan("127.0.0.1 traefik.%s", initDomain)
+				color.Cyan("# Add more entries as you install services:")
+				color.Cyan("# 127.0.0.1 <service>.%s", initDomain)
+				fmt.Println("EOF\"")
+				fmt.Println()
+				color.New(color.Faint).Println("Note: You'll need to add an entry for each service you install.")
+				color.New(color.Faint).Println("You can continue for now and set up DNS later.")
+				fmt.Println()
 			} else {
 				printSuccess(fmt.Sprintf("DNS entries added to %s", dnsMgr.GetHostsFilePath()))
 			}
@@ -244,28 +257,110 @@ func runInit(cmd *cobra.Command, args []string) error {
 		initProtocol,
 	)
 
-	if err := traefikMgr.Setup(); err != nil {
-		return fmt.Errorf("failed to setup Traefik: %w", err)
+	// Check if Traefik container already exists
+	traefikExists, err := dockerClient.ContainerExists(traefik.TraefikContainerName)
+	if err != nil {
+		return fmt.Errorf("failed to check Traefik container: %w", err)
 	}
 
-	// Connect Traefik to doku-network
-	if err := networkMgr.ConnectContainer("doku-network", traefik.TraefikContainerName); err != nil {
-		return fmt.Errorf("failed to connect Traefik to network: %w", err)
+	// If exists, ask user what to do
+	if traefikExists {
+		color.Yellow("⚠️  Traefik container already exists")
+
+		recreate := false
+		recreatePrompt := &survey.Confirm{
+			Message: "Do you want to remove and recreate Traefik? (Recommended for clean setup)",
+			Default: true,
+		}
+		if err := survey.AskOne(recreatePrompt, &recreate); err != nil {
+			return fmt.Errorf("failed to get user confirmation: %w", err)
+		}
+
+		if recreate {
+			fmt.Println("Removing existing Traefik container...")
+
+			// Disconnect from network first
+			networkMgr.DisconnectContainer("doku-network", traefik.TraefikContainerName, true)
+
+			// Remove container
+			if err := traefikMgr.RemoveContainer(); err != nil {
+				return fmt.Errorf("failed to remove existing Traefik: %w", err)
+			}
+
+			// Setup Traefik (create and start)
+			if err := traefikMgr.Setup(); err != nil {
+				return fmt.Errorf("failed to setup Traefik: %w", err)
+			}
+
+			// Connect Traefik to doku-network
+			if err := networkMgr.ConnectContainer("doku-network", traefik.TraefikContainerName); err != nil {
+				return fmt.Errorf("failed to connect Traefik to network: %w", err)
+			}
+
+			dashboardURL := traefikMgr.GetDashboardURL()
+			printSuccess(fmt.Sprintf("Traefik installed and running"))
+			printSuccess(fmt.Sprintf("Dashboard: %s", dashboardURL))
+
+			// Update config with Traefik status
+			if err := cfgMgr.Update(func(c *types.Config) error {
+				c.Traefik.DashboardURL = dashboardURL
+				c.Traefik.Status = "running"
+				return nil
+			}); err != nil {
+				return fmt.Errorf("failed to update Traefik status: %w", err)
+			}
+		} else {
+			// Use existing Traefik - just ensure it's running
+			isRunning, err := traefikMgr.IsRunning()
+			if err != nil {
+				return fmt.Errorf("failed to check Traefik status: %w", err)
+			}
+
+			if !isRunning {
+				fmt.Println("Starting existing Traefik container...")
+				containerInfo, _ := dockerClient.ContainerInspect(traefik.TraefikContainerName)
+				if err := dockerClient.ContainerStart(containerInfo.ID); err != nil {
+					return fmt.Errorf("failed to start existing Traefik: %w", err)
+				}
+			}
+
+			printSuccess("Using existing Traefik container")
+
+			// Update config with Traefik status
+			dashboardURL := traefikMgr.GetDashboardURL()
+			if err := cfgMgr.Update(func(c *types.Config) error {
+				c.Traefik.DashboardURL = dashboardURL
+				c.Traefik.Status = "running"
+				return nil
+			}); err != nil {
+				return fmt.Errorf("failed to update Traefik status: %w", err)
+			}
+		}
+	} else {
+		// No existing Traefik, create fresh
+		// Setup Traefik (create and start)
+		if err := traefikMgr.Setup(); err != nil {
+			return fmt.Errorf("failed to setup Traefik: %w", err)
+		}
+
+		// Connect Traefik to doku-network
+		if err := networkMgr.ConnectContainer("doku-network", traefik.TraefikContainerName); err != nil {
+			return fmt.Errorf("failed to connect Traefik to network: %w", err)
+		}
+
+		dashboardURL := traefikMgr.GetDashboardURL()
+		printSuccess(fmt.Sprintf("Traefik installed and running"))
+		printSuccess(fmt.Sprintf("Dashboard: %s", dashboardURL))
+
+		// Update config with Traefik status
+		if err := cfgMgr.Update(func(c *types.Config) error {
+			c.Traefik.DashboardURL = dashboardURL
+			c.Traefik.Status = "running"
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed to update Traefik status: %w", err)
+		}
 	}
-
-	dashboardURL := traefikMgr.GetDashboardURL()
-	printSuccess(fmt.Sprintf("Traefik installed and running"))
-	printSuccess(fmt.Sprintf("Dashboard: %s", dashboardURL))
-
-	// Update config with Traefik status
-	if err := cfgMgr.Update(func(c *types.Config) error {
-		c.Traefik.DashboardURL = dashboardURL
-		c.Traefik.Status = "running"
-		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to update Traefik status: %w", err)
-	}
-
 	// Step 8: Download catalog
 	stepNum++
 	printStep(stepNum, "Downloading service catalog")
@@ -316,7 +411,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	color.Cyan("Next steps:")
 	fmt.Println("  • Browse catalog: doku catalog")
 	fmt.Println("  • Install a service: doku install <service>")
-	fmt.Println(fmt.Sprintf("  • View dashboard: %s", dashboardURL))
+	fmt.Println(fmt.Sprintf("  • View dashboard: %s", traefikMgr.GetDashboardURL()))
 
 	fmt.Println()
 	color.Green(fmt.Sprintf("All services will be accessible at: %s://<service>.%s", initProtocol, initDomain))
