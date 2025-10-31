@@ -23,8 +23,11 @@ Doku is a CLI tool that simplifies running and managing Docker-based services lo
 # Download the latest release
 curl -sSL https://get.doku.dev | bash
 
-# Or using Go
+# Or using Go (recommended - always gets the latest version)
 go install github.com/dokulabs/doku-cli/cmd/doku@latest
+
+# Or install a specific version
+go install github.com/dokulabs/doku-cli/cmd/doku@v0.1.0
 ```
 
 ### First-Time Setup
