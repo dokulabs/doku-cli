@@ -299,25 +299,3 @@ func formatUptime(startedAt string) string {
 	// This is a simplified version
 	return "Active" // Would need proper time parsing from Docker format
 }
-
-func isSensitiveKey(key string) bool {
-	sensitiveKeys := []string{
-		"PASSWORD", "PASSWD", "SECRET", "TOKEN", "KEY", "API_KEY",
-		"PRIVATE", "CREDENTIAL", "AUTH", "CERT",
-	}
-
-	upperKey := strings.ToUpper(key)
-	for _, sensitive := range sensitiveKeys {
-		if strings.Contains(upperKey, sensitive) {
-			return true
-		}
-	}
-	return false
-}
-
-func maskValue(value string) string {
-	if len(value) <= 4 {
-		return "****"
-	}
-	return value[:2] + strings.Repeat("*", len(value)-4) + value[len(value)-2:]
-}

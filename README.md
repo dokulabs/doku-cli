@@ -14,20 +14,23 @@ Doku is a CLI tool that simplifies running and managing Docker-based services lo
 - 🎯 **Local development focus** - Optimized for developer productivity
 - 💪 **Resource control** - Set CPU and memory limits per service
 - 🏗️ **API Gateway pattern** - Internal-only services for microservices architecture
+- 🔐 **Environment management** - Secure environment variable handling with masking
+- 📋 **Service catalog** - Curated collection of popular development services
+- 🔄 **Full lifecycle management** - Start, stop, restart, and remove services with ease
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-# Download the latest release
-curl -sSL https://get.doku.dev | bash
-
-# Or using Go (recommended - always gets the latest version)
+# Using Go (recommended)
 go install github.com/dokulabs/doku-cli/cmd/doku@latest
 
 # Or install a specific version
 go install github.com/dokulabs/doku-cli/cmd/doku@v0.1.0
+
+# Verify installation
+doku version
 ```
 
 ### First-Time Setup
@@ -51,17 +54,28 @@ This will:
 doku install postgres
 
 # Install with specific version
-doku install postgres --version 14 --name postgres-14
+doku install postgres:14 --name postgres-14
+
+# Install with custom environment variables
+doku install postgres \
+  --env POSTGRES_PASSWORD=mysecret \
+  --env POSTGRES_DB=myapp
 
 # Install with resource limits
-doku install redis --memory 512m --cpus 1
+doku install redis --memory 512m --cpu 1.0
+
+# Install as internal service (no external access)
+doku install redis --internal
 ```
 
 ### Manage Services
 
 ```bash
-# List installed services
+# List running services
 doku list
+
+# List all services (including stopped)
+doku list --all
 
 # Start a service
 doku start postgres
@@ -69,11 +83,17 @@ doku start postgres
 # Stop a service
 doku stop postgres
 
+# Restart a service
+doku restart postgres
+
 # View logs
 doku logs postgres -f
 
-# Get service info
+# Get detailed service info
 doku info postgres
+
+# View environment variables
+doku env postgres
 
 # Remove a service
 doku remove postgres
@@ -137,13 +157,19 @@ And many more...
 
 ### Multiple Versions
 
-Run multiple versions of the same service:
+Run multiple versions of the same service simultaneously:
 
 ```bash
-doku install postgres --version 14 --name postgres-14
-doku install postgres --version 16 --name postgres-16
+# Install PostgreSQL 14
+doku install postgres:14 --name postgres-14
 
-# Both running simultaneously on different ports
+# Install PostgreSQL 16
+doku install postgres:16 --name postgres-16
+
+# Both are now running on the same network
+# Access via:
+# - https://postgres-14.doku.local
+# - https://postgres-16.doku.local
 ```
 
 ### Service Discovery
@@ -160,16 +186,32 @@ Connection:
 DATABASE_URL=postgresql://postgres@postgres-14.doku.local:5432
 ```
 
-### Local Projects
+### Environment Variables
 
-Build and run your own projects:
+View and export environment variables configured for services:
 
 ```bash
-cd ~/my-app
-doku project add
+# View environment variables (sensitive values masked)
+$ doku env postgres-14
 
-# Doku will detect your Dockerfile and configure routing
-# Access your app at: https://my-app.doku.local
+Environment Variables: postgres-14
+==================================================
+
+  POSTGRES_DB=myapp
+  POSTGRES_PASSWORD=po***es (masked)
+  POSTGRES_USER=postgres
+
+# Show actual values
+doku env postgres-14 --raw
+
+# Export format for shell sourcing
+doku env postgres-14 --export --raw > .env
+
+# Or source directly
+eval $(doku env postgres-14 --export --raw)
+
+# JSON format for scripts
+doku env postgres-14 --json
 ```
 
 ### API Gateway Pattern
@@ -225,20 +267,34 @@ doku init --domain mydev.local
 | Command | Description |
 |---------|-------------|
 | `doku init` | Initialize Doku on your system |
-| `doku install <service>` | Install a service |
-| `doku start <instance>` | Start a service |
-| `doku stop <instance>` | Stop a service |
-| `doku restart <instance>` | Restart a service |
-| `doku list` | List all services |
-| `doku remove <instance>` | Remove a service |
-| `doku info <instance>` | Get service details |
-| `doku logs <instance>` | View service logs |
+| `doku version` | Show version information |
+| **Catalog** | |
 | `doku catalog` | Browse available services |
-| `doku dashboard` | Open Traefik dashboard |
-| `doku status` | System status overview |
-| `doku update` | Update service catalog |
+| `doku catalog search <query>` | Search for services |
+| `doku catalog show <service>` | Show service details |
+| `doku catalog update` | Update catalog from GitHub |
+| **Service Management** | |
+| `doku install <service>` | Install a service from catalog |
+| `doku list` | List all running services |
+| `doku list --all` | List all services (including stopped) |
+| `doku info <service>` | Show detailed service information |
+| `doku env <service>` | Show environment variables |
+| `doku start <service>` | Start a stopped service |
+| `doku stop <service>` | Stop a running service |
+| `doku restart <service>` | Restart a service |
+| `doku logs <service>` | View service logs |
+| `doku logs <service> -f` | Follow service logs in real-time |
+| `doku remove <service>` | Remove a service and its data |
+| **Cleanup** | |
 | `doku uninstall` | Uninstall Doku and clean up everything |
-| `doku version` | Show version info |
+
+### Common Flags
+
+- `--help, -h` - Show help for any command
+- `--verbose, -v` - Verbose output
+- `--quiet, -q` - Quiet mode (minimal output)
+- `--yes, -y` - Skip confirmation prompts (for remove/uninstall)
+- `--force, -f` - Force operation
 
 ## Uninstalling
 
@@ -316,31 +372,51 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Project Status
 
-**Status:** 🚧 Under active development (v0.1.0-alpha)
+**Status:** ✅ Production Ready (v0.1.0)
 
 ### Completed Features ✅
-- ✅ Configuration management
-- ✅ Docker integration
+
+**Core Infrastructure:**
+- ✅ Configuration management (TOML-based)
+- ✅ Docker SDK integration with full container lifecycle
 - ✅ SSL certificate generation (mkcert)
-- ✅ Traefik reverse proxy setup
-- ✅ Service catalog system
+- ✅ Traefik reverse proxy setup with automatic routing
+- ✅ DNS configuration (hosts file integration)
+- ✅ Network management (doku-network bridge)
+
+**Service Catalog:**
+- ✅ GitHub-based catalog system
+- ✅ Version management for services
+- ✅ Service metadata (icons, descriptions, tags, links)
+- ✅ Catalog browsing and search
+- ✅ Automatic catalog updates
+
+**Service Management (Phase 4 Complete!):**
 - ✅ Service installation with interactive prompts
+- ✅ Service listing with filtering and status
+- ✅ Service lifecycle (start, stop, restart)
+- ✅ Service removal with cleanup
+- ✅ Service information display
+- ✅ Environment variable management with masking
+- ✅ Log viewing with follow mode
 - ✅ Resource limits (CPU/memory)
 - ✅ Volume management
 - ✅ Internal-only services (API Gateway pattern)
 
-### In Progress 🚧
-- 🚧 Lifecycle commands (start, stop, list, logs, etc.)
-- 🚧 Service health checks
-- 🚧 Multi-project support
+**Utilities:**
+- ✅ Complete uninstallation with automatic cleanup
+- ✅ Version information
+- ✅ Help system
 
-### Planned 📋
-- 📋 Dependency management
-- 📋 Service templates
-- 📋 Environment profiles
+### Planned Enhancements 📋
+- 📋 Service health checks and monitoring
+- 📋 Multi-project workspace support
+- 📋 Dependency management between services
+- 📋 Service templates and custom definitions
+- 📋 Environment profiles (dev/staging/prod)
 - 📋 Backup/restore functionality
-
-See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed progress and [SESSION_CONTEXT.md](SESSION_CONTEXT.md) for quick reference.
+- 📋 Service update command
+- 📋 Dashboard UI (web-based management)
 
 ---
 
