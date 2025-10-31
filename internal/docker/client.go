@@ -8,6 +8,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/volume"
@@ -364,4 +365,65 @@ func (c *Client) NetworkDisconnect(networkID, containerID string, force bool) er
 		return fmt.Errorf("failed to disconnect container from network: %w", err)
 	}
 	return nil
+}
+
+// Helper methods for filtering by labels
+
+// ListContainersByLabel lists containers with a specific label
+func (c *Client) ListContainersByLabel(ctx context.Context, labelKey, labelValue string) ([]types.Container, error) {
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("label", fmt.Sprintf("%s=%s", labelKey, labelValue))
+
+	options := container.ListOptions{
+		All:     true,
+		Filters: filterArgs,
+	}
+
+	containers, err := c.cli.ContainerList(ctx, options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list containers by label: %w", err)
+	}
+	return containers, nil
+}
+
+// ListVolumesByLabel lists volumes with a specific label
+func (c *Client) ListVolumesByLabel(ctx context.Context, labelKey, labelValue string) ([]*volume.Volume, error) {
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("label", fmt.Sprintf("%s=%s", labelKey, labelValue))
+
+	options := volume.ListOptions{
+		Filters: filterArgs,
+	}
+
+	volumeList, err := c.cli.VolumeList(ctx, options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list volumes by label: %w", err)
+	}
+
+	volumes := make([]*volume.Volume, len(volumeList.Volumes))
+	for i, vol := range volumeList.Volumes {
+		volumes[i] = vol
+	}
+	return volumes, nil
+}
+
+// StopContainer stops a container by name or ID
+func (c *Client) StopContainer(ctx context.Context, containerID string) error {
+	timeout := 10 // 10 seconds timeout
+	return c.ContainerStop(containerID, &timeout)
+}
+
+// RemoveContainer removes a container by name or ID
+func (c *Client) RemoveContainer(ctx context.Context, containerID string) error {
+	return c.ContainerRemove(containerID, true)
+}
+
+// RemoveVolume removes a volume by name
+func (c *Client) RemoveVolume(ctx context.Context, volumeName string) error {
+	return c.VolumeRemove(volumeName, true)
+}
+
+// RemoveNetwork removes a network by name or ID
+func (c *Client) RemoveNetwork(ctx context.Context, networkID string) error {
+	return c.NetworkRemove(networkID)
 }

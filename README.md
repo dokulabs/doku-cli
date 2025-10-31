@@ -13,6 +13,7 @@ Doku is a CLI tool that simplifies running and managing Docker-based services lo
 - 📦 **Version management** - Run multiple versions of the same service
 - 🎯 **Local development focus** - Optimized for developer productivity
 - 💪 **Resource control** - Set CPU and memory limits per service
+- 🏗️ **API Gateway pattern** - Internal-only services for microservices architecture
 
 ## Quick Start
 
@@ -23,7 +24,7 @@ Doku is a CLI tool that simplifies running and managing Docker-based services lo
 curl -sSL https://get.doku.dev | bash
 
 # Or using Go
-go install github.com/dokulabs/doku-cli@latest
+go install github.com/dokulabs/doku-cli/cmd/doku@latest
 ```
 
 ### First-Time Setup
@@ -168,6 +169,33 @@ doku project add
 # Access your app at: https://my-app.doku.local
 ```
 
+### API Gateway Pattern
+
+Build microservices architectures with internal-only services:
+
+```bash
+# Install backend services as internal (not exposed externally)
+doku install user-service --internal
+doku install order-service --internal
+doku install payment-service --internal
+
+# Install API Gateway as public service
+doku install spring-gateway --name api \
+  --env USER_SERVICE_URL=http://user-service:8081 \
+  --env ORDER_SERVICE_URL=http://order-service:8082 \
+  --env PAYMENT_SERVICE_URL=http://payment-service:8083
+
+# Now only the API Gateway is accessible externally:
+# https://api.doku.local
+
+# Backend services communicate internally via container names
+```
+
+This pattern mirrors enterprise microservices architectures where:
+- API Gateway handles authentication, authorization, and routing
+- Backend services are isolated and only accessible within the network
+- Services communicate using container names (service discovery)
+
 ## Configuration
 
 Doku stores configuration in `~/.doku/`:
@@ -206,7 +234,45 @@ doku init --domain mydev.local
 | `doku dashboard` | Open Traefik dashboard |
 | `doku status` | System status overview |
 | `doku update` | Update service catalog |
+| `doku uninstall` | Uninstall Doku and clean up everything |
 | `doku version` | Show version info |
+
+## Uninstalling
+
+To completely remove Doku from your system:
+
+```bash
+# Uninstall with confirmation prompt
+doku uninstall
+
+# Force uninstall without prompts
+doku uninstall --force
+
+# Uninstall and remove mkcert CA certificates
+doku uninstall --all
+```
+
+### What Gets Removed Automatically:
+
+- ✅ All Docker containers managed by Doku
+- ✅ All Docker volumes created by Doku
+- ✅ Doku Docker network
+- ✅ Configuration directory (`~/.doku/`)
+- ✅ Doku binaries (`doku` and `doku-cli`)
+
+### Manual Cleanup (Optional):
+
+The uninstall command provides OS-specific instructions for:
+
+1. **DNS entries** - Remove `*.doku.local` entries from `/etc/hosts` or resolver
+2. **mkcert CA certificates** - Optionally remove with `mkcert -uninstall`
+
+### Complete Removal:
+
+```bash
+# Run uninstall and immediately remove the binary
+doku uninstall --force && rm -f ~/go/bin/doku ~/go/bin/doku-cli
+```
 
 ## Requirements
 
@@ -249,7 +315,29 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 **Status:** 🚧 Under active development (v0.1.0-alpha)
 
-This project is in early development. Core features are being implemented. See [DOKU_PROJECT_TRACKER.md](../DOKU_PROJECT_TRACKER.md) for detailed progress.
+### Completed Features ✅
+- ✅ Configuration management
+- ✅ Docker integration
+- ✅ SSL certificate generation (mkcert)
+- ✅ Traefik reverse proxy setup
+- ✅ Service catalog system
+- ✅ Service installation with interactive prompts
+- ✅ Resource limits (CPU/memory)
+- ✅ Volume management
+- ✅ Internal-only services (API Gateway pattern)
+
+### In Progress 🚧
+- 🚧 Lifecycle commands (start, stop, list, logs, etc.)
+- 🚧 Service health checks
+- 🚧 Multi-project support
+
+### Planned 📋
+- 📋 Dependency management
+- 📋 Service templates
+- 📋 Environment profiles
+- 📋 Backup/restore functionality
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed progress and [SESSION_CONTEXT.md](SESSION_CONTEXT.md) for quick reference.
 
 ---
 

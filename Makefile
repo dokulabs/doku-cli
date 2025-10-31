@@ -28,18 +28,18 @@ help:
 build:
 	@echo "Building ${BINARY_NAME}..."
 	@mkdir -p bin
-	go build ${LDFLAGS} -o bin/${BINARY_NAME} .
+	go build ${LDFLAGS} -o bin/${BINARY_NAME} ./cmd/doku
 	@echo "Build complete: bin/${BINARY_NAME}"
 
 # Install to GOPATH/bin
 install:
 	@echo "Installing ${BINARY_NAME}..."
-	go install ${LDFLAGS} .
+	go install ${LDFLAGS} ./cmd/doku
 	@echo "Installed to $(shell go env GOPATH)/bin/${BINARY_NAME}"
 
 # Run the application
 run:
-	go run ${LDFLAGS} . $(ARGS)
+	go run ${LDFLAGS} ./cmd/doku $(ARGS)
 
 # Development mode (requires air: go install github.com/cosmtrek/air@latest)
 dev:
@@ -89,9 +89,9 @@ deps:
 build-all:
 	@echo "Building for all platforms..."
 	@mkdir -p dist
-	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o dist/${BINARY_NAME}-darwin-amd64 .
-	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o dist/${BINARY_NAME}-darwin-arm64 .
-	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o dist/${BINARY_NAME}-linux-amd64 .
-	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o dist/${BINARY_NAME}-linux-arm64 .
-	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o dist/${BINARY_NAME}-windows-amd64.exe .
+	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o dist/${BINARY_NAME}-darwin-amd64 ./cmd/doku
+	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o dist/${BINARY_NAME}-darwin-arm64 ./cmd/doku
+	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o dist/${BINARY_NAME}-linux-amd64 ./cmd/doku
+	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o dist/${BINARY_NAME}-linux-arm64 ./cmd/doku
+	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o dist/${BINARY_NAME}-windows-amd64.exe ./cmd/doku
 	@echo "Cross-platform builds complete"
