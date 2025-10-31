@@ -2,9 +2,9 @@
 
 **Last Session Date:** October 31, 2024
 
-## 🎯 Current Status: Phase 4 Complete
+## 🎯 Current Status: Phase 4 & 5 Complete! 🎉
 
-Service installation and management system is fully implemented with API Gateway pattern support.
+Complete service lifecycle management and CLI self-upgrade capabilities are fully implemented.
 
 ## 📁 Project Locations
 - CLI: `/Users/kesharinandan/Work/Experiment/dokulabs/doku-cli`
@@ -12,20 +12,35 @@ Service installation and management system is fully implemented with API Gateway
 
 ## ✅ What's Working
 
-### Commands Available
+### All Commands Available
 - `doku init` - Initialize Doku environment
-- `doku catalog update|search|list|info` - Catalog operations
-- `doku install <service>` - Install services with full options
+- `doku version` - Show version info
+- `doku self upgrade` - Upgrade CLI to latest version
+- `doku catalog` - Browse/search/update catalog
+- `doku install <service>` - Install services
+- `doku list [--all]` - List services
+- `doku info <service>` - Detailed service information
+- `doku env <service>` - Show environment variables
+- `doku start <service>` - Start services
+- `doku stop <service>` - Stop services
+- `doku restart <service>` - Restart services
+- `doku logs <service> [-f]` - View logs
+- `doku remove <service>` - Remove services
+- `doku uninstall` - Complete cleanup
 
 ### Key Features
-- Docker container management
-- Traefik reverse proxy with HTTPS
-- Local SSL certificates (mkcert)
-- Service catalog with 8 services
-- Interactive installation with prompts
-- Resource limits (CPU/memory)
-- Volume management
-- **NEW:** Internal-only services (--internal flag)
+- ✅ Docker container management
+- ✅ Traefik reverse proxy with HTTPS
+- ✅ Traefik management (start, stop, restart, logs, info)
+- ✅ Local SSL certificates (mkcert)
+- ✅ Service catalog with 8+ services
+- ✅ Interactive installation with prompts
+- ✅ Resource limits (CPU/memory)
+- ✅ Volume management
+- ✅ Internal-only services (--internal flag)
+- ✅ Environment variable management with masking
+- ✅ Self-upgrade capability
+- ✅ Complete lifecycle management
 
 ### Service Installation Options
 ```bash
@@ -119,19 +134,26 @@ func (i *Installer) generateLabels(..., internal bool) map[string]string {
 - Updated examples
 - Fixed volume flag conflict (removed -v shorthand)
 
-## 🚧 Not Yet Implemented
+## 🚀 Recently Implemented (Phase 5)
 
-### Missing Commands (Phase 5)
-- `doku list` - List services
-- `doku stop <service>` - Stop service
-- `doku start <service>` - Start service
-- `doku restart <service>` - Restart service
-- `doku remove <service>` - Remove service
-- `doku logs <service>` - View logs
-- `doku status <service>` - Check status
-- `doku stats <service>` - Resource usage
+### ✅ All Lifecycle Commands Complete!
+- ✅ `doku list` - List services with filtering and status
+- ✅ `doku stop <service>` - Stop service (inc. Traefik)
+- ✅ `doku start <service>` - Start service (inc. Traefik)
+- ✅ `doku restart <service>` - Restart service (inc. Traefik)
+- ✅ `doku remove <service>` - Remove service with confirmation
+- ✅ `doku logs <service>` - View/stream logs (inc. Traefik)
+- ✅ `doku info <service>` - Service details (inc. Traefik)
+- ✅ `doku env <service>` - Environment variables with masking
+- ✅ `doku self upgrade` - CLI self-upgrade capability
 
-**Note:** Manager methods exist in `internal/service/manager.go` but CLI commands not yet implemented.
+### ✅ Traefik Management Support
+All commands now support managing Traefik reverse proxy:
+- Accepts both `traefik` and `doku-traefik` as service name
+- Special handling for system component operations
+- Dashboard URL display for operations
+- Warnings when stopping Traefik
+- Prevention of Traefik removal (use `doku uninstall` instead)
 
 ## 🐛 Known Issues
 
@@ -187,21 +209,32 @@ cat catalog.toml
 - `AddInstance(instance)` - Save instance
 - `HasInstance(name)` - Check existence
 
-## 💡 Next Session Tasks
+## 💡 Potential Future Enhancements
 
-1. **Implement lifecycle commands** (Phase 5)
-   - Create `cmd/start.go`, `cmd/stop.go`, etc.
-   - Wire up to service.Manager methods
-   - Add tests
+1. **Service Updates**
+   - `doku update <service>` - Update to latest version
+   - Automated backup before updates
 
-2. **Add Spring Gateway to catalog**
-   - Create service definition in `doku-catalog/catalog.toml`
-   - Document configuration options
+2. **Health Monitoring**
+   - Service health checks
+   - Automated recovery
+   - Status dashboard
 
-3. **Test API Gateway scenario end-to-end**
-   - Install internal services
-   - Install gateway
-   - Verify isolation
+3. **Resource Monitoring**
+   - `doku stats <service>` - Real-time resource usage
+   - Historical metrics tracking
+   - Alerts on resource limits
+
+4. **Backup & Restore**
+   - `doku backup <service>` - Create backups
+   - `doku restore <service>` - Restore from backup
+   - Automated backup scheduling
+
+5. **Advanced Features**
+   - Service dependency management
+   - Multi-project isolation
+   - Service templates
+   - Web-based dashboard UI
 
 ## 📞 User Context
 

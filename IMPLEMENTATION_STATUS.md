@@ -101,6 +101,34 @@
   - Tail mode for limiting lines
   - Timestamps support
   - Clean Ctrl+C handling
+  - **Traefik support** - View Traefik reverse proxy logs
+- [✅] `doku env` command (FULLY IMPLEMENTED)
+  - Display service environment variables
+  - Automatic masking of sensitive values (passwords, tokens, secrets)
+  - `--raw` flag to show unmasked values
+  - `--export` flag for shell export format
+  - `--json` flag for JSON output
+  - Shell sourcing support: `eval $(doku env service --export --raw)`
+
+### Traefik Management ✅
+- [✅] Traefik support in all lifecycle commands
+  - Recognize both `traefik` and `doku-traefik` names
+  - `doku logs traefik` - View Traefik logs
+  - `doku info traefik` - Show Traefik info and dashboard URL
+  - `doku start traefik` - Start Traefik with dashboard URL display
+  - `doku stop traefik` - Stop Traefik with warning (affects all services)
+  - `doku restart traefik` - Restart Traefik
+  - `doku env traefik` - Shows informative message about Traefik configuration
+  - `doku remove traefik` - Prevented with guidance to use `doku uninstall`
+
+### CLI Management ✅
+- [✅] `doku self upgrade` command (FULLY IMPLEMENTED)
+  - Automatic version checking against GitHub releases
+  - Platform-specific binary download (darwin/linux/windows, amd64/arm64)
+  - Safe binary replacement with backup
+  - Installation verification
+  - Force upgrade option with `--force` flag
+  - Development build detection and handling
 
 ### Utilities ✅
 - [✅] `doku uninstall` command (FULLY IMPLEMENTED)
@@ -111,11 +139,11 @@
 
 ---
 
-## 🎯 PHASE 4 COMPLETE! 🎉
+## 🎯 PHASE 4 & 5 COMPLETE! 🎉
 
-All essential service lifecycle commands have been implemented and are fully functional.
+All essential service lifecycle commands and CLI management features have been implemented and are fully functional.
 
-### What's Next (Phase 5 - Future Enhancements):
+### What's Next (Future Enhancements):
 
 #### Potential Future Features:
 1. **`doku update <service>`** - Update service to latest version
@@ -141,11 +169,15 @@ All essential service lifecycle commands have been implemented and are fully fun
   - Install: ✅ Done
   - List: ✅ Done
   - Info: ✅ Done
+  - Env: ✅ Done
   - Start: ✅ Done
   - Stop: ✅ Done
   - Restart: ✅ Done
   - Remove: ✅ Done
   - Logs: ✅ Done
+- **Phase 5 (CLI Management)**: 100% ✅
+  - Self Upgrade: ✅ Done
+  - Traefik Support: ✅ Done
 
 ### Commands Status:
 
@@ -153,15 +185,17 @@ All essential service lifecycle commands have been implemented and are fully fun
 |---------|--------|--------------|-------|
 | `doku version` | ✅ Complete | Yes | Shows version info |
 | `doku init` | ✅ Complete | Yes | Full setup with Traefik |
+| `doku self upgrade` | ✅ Complete | Yes | Upgrade CLI to latest version |
 | `doku catalog` | ✅ Complete | Yes | Browse/search services |
 | `doku install` | ✅ Complete | Yes | Install any service |
 | `doku list` | ✅ Complete | Yes | List all services |
-| `doku info` | ✅ Complete | Yes | Service details |
-| `doku start` | ✅ Complete | Yes | Start services |
-| `doku stop` | ✅ Complete | Yes | Stop services |
-| `doku restart` | ✅ Complete | Yes | Restart services |
+| `doku info` | ✅ Complete | Yes | Service details (inc. Traefik) |
+| `doku env` | ✅ Complete | Yes | Show environment variables |
+| `doku start` | ✅ Complete | Yes | Start services (inc. Traefik) |
+| `doku stop` | ✅ Complete | Yes | Stop services (inc. Traefik) |
+| `doku restart` | ✅ Complete | Yes | Restart services (inc. Traefik) |
 | `doku remove` | ✅ Complete | Yes | Remove services |
-| `doku logs` | ✅ Complete | Yes | View/stream logs |
+| `doku logs` | ✅ Complete | Yes | View/stream logs (inc. Traefik) |
 | `doku uninstall` | ✅ Complete | Yes | Complete cleanup |
 
 ---
@@ -171,6 +205,11 @@ All essential service lifecycle commands have been implemented and are fully fun
 ```bash
 # Initialize Doku (complete setup with catalog download)
 doku init
+
+# CLI Management
+doku version                    # Show version info
+doku self upgrade               # Upgrade to latest version
+doku self upgrade --force       # Force upgrade without prompt
 
 # Browse available services
 doku catalog                    # List all services
@@ -198,23 +237,31 @@ doku list -v                    # Verbose mode
 
 # Service information
 doku info postgres-main         # Detailed info
-doku info postgres-main --env   # Show environment variables
+doku info traefik               # View Traefik info and dashboard
+
+# Environment variables
+doku env postgres-main          # Show environment variables (masked)
+doku env postgres-main --raw    # Show actual values
+doku env postgres-main --export # Shell export format
+doku env postgres-main --json   # JSON output
+eval $(doku env postgres-main --export --raw)  # Source into shell
 
 # Service lifecycle
 doku start postgres-main        # Start stopped service
+doku start traefik              # Start Traefik reverse proxy
 doku stop postgres-main         # Stop running service
+doku stop traefik               # Stop Traefik (with warning)
 doku restart postgres-main      # Restart service
+doku restart traefik            # Restart Traefik
 doku remove postgres-main       # Remove service
 doku remove postgres-main -y    # Skip confirmation
 
 # View logs
 doku logs postgres-main         # Show recent logs
+doku logs traefik               # View Traefik logs
 doku logs postgres-main -f      # Stream logs (follow mode)
 doku logs postgres-main --tail 50  # Last 50 lines
 doku logs redis-cache -f -t     # Follow with timestamps
-
-# Version info
-doku version
 
 # Complete uninstall
 doku uninstall --force
@@ -259,6 +306,11 @@ go install github.com/dokulabs/doku-cli/cmd/doku@latest
 
 ## 🔄 Recent Changes:
 
+- **2025-10-31**: 🚀 **NEW!** Added `doku self upgrade` command for automatic CLI updates
+- **2025-10-31**: 🚀 **NEW!** Added `doku env` command with masking, export, and JSON formats
+- **2025-10-31**: ✅ Added Traefik support to all lifecycle commands (start, stop, restart, logs, info, remove)
+- **2025-10-31**: ✅ Enhanced `doku init` with user confirmation for Traefik recreation
+- **2025-10-31**: ✅ Improved DNS setup error messages with manual instructions
 - **2025-10-31**: 🎉 **PHASE 4 COMPLETE!** All service lifecycle commands implemented
 - **2025-10-31**: ✅ Implemented `doku logs` command with follow mode
 - **2025-10-31**: ✅ Implemented `doku remove` command with confirmation

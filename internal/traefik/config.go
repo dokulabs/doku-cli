@@ -86,21 +86,21 @@ func (m *Manager) generateConfigContent(config Config) string {
 		content += "  websecure:\n"
 		content += fmt.Sprintf("    address: \":%d\"\n", config.HTTPSPort)
 		content += "    http:\n"
-		content += "      tls:\n"
-		content += "        certificates:\n"
-		content += fmt.Sprintf("          - certFile: %s\n", config.CertificatePath)
-		content += fmt.Sprintf("            keyFile: %s\n", config.CertificateKeyPath)
+		content += "      tls: {}\n"
 		content += "\n"
 	} else {
 		content += "\n"
 	}
 
-	// Docker provider configuration
+	// Providers configuration
 	content += "providers:\n"
 	content += "  docker:\n"
 	content += "    endpoint: \"unix:///var/run/docker.sock\"\n"
 	content += "    exposedByDefault: false\n"
 	content += "    network: \"doku-network\"\n"
+	content += "    watch: true\n"
+	content += "  file:\n"
+	content += "    filename: /etc/traefik/dynamic.yml\n"
 	content += "    watch: true\n"
 	content += "\n"
 
@@ -140,6 +140,15 @@ func (m *Manager) GenerateDynamicConfig() error {
 		content += "      service: api@internal\n"
 		content += "      entryPoints:\n"
 		content += "        - web\n"
+	}
+
+	// TLS configuration for HTTPS
+	if m.protocol == "https" {
+		content += "\n"
+		content += "tls:\n"
+		content += "  certificates:\n"
+		content += "    - certFile: /certs/" + m.domain + ".pem\n"
+		content += "      keyFile: /certs/" + m.domain + "-key.pem\n"
 	}
 
 	if err := os.WriteFile(dynamicConfigPath, []byte(content), 0644); err != nil {

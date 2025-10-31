@@ -40,9 +40,14 @@ func NewManager(dockerClient *docker.Client, configDir, certsDir, domain, protoc
 
 // Setup sets up Traefik (configuration + container)
 func (m *Manager) Setup() error {
-	// Generate configuration file
+	// Generate static configuration file
 	if err := m.GenerateConfig(); err != nil {
 		return fmt.Errorf("failed to generate Traefik config: %w", err)
+	}
+
+	// Generate dynamic configuration file
+	if err := m.GenerateDynamicConfig(); err != nil {
+		return fmt.Errorf("failed to generate Traefik dynamic config: %w", err)
 	}
 
 	// Start Traefik container
@@ -173,15 +178,21 @@ func (m *Manager) IsRunning() (bool, error) {
 func (m *Manager) createMounts() []mount.Mount {
 	mounts := []mount.Mount{
 		{
-			Type:   mount.TypeBind,
-			Source: "/var/run/docker.sock",
-			Target: "/var/run/docker.sock",
+			Type:     mount.TypeBind,
+			Source:   "/var/run/docker.sock",
+			Target:   "/var/run/docker.sock",
 			ReadOnly: true,
 		},
 		{
-			Type:   mount.TypeBind,
-			Source: filepath.Join(m.configDir, "traefik.yml"),
-			Target: "/etc/traefik/traefik.yml",
+			Type:     mount.TypeBind,
+			Source:   filepath.Join(m.configDir, "traefik.yml"),
+			Target:   "/etc/traefik/traefik.yml",
+			ReadOnly: true,
+		},
+		{
+			Type:     mount.TypeBind,
+			Source:   filepath.Join(m.configDir, "dynamic.yml"),
+			Target:   "/etc/traefik/dynamic.yml",
 			ReadOnly: true,
 		},
 	}
@@ -189,9 +200,9 @@ func (m *Manager) createMounts() []mount.Mount {
 	// Add certificates mount if using HTTPS
 	if m.protocol == "https" {
 		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeBind,
-			Source: m.certsDir,
-			Target: "/certs",
+			Type:     mount.TypeBind,
+			Source:   m.certsDir,
+			Target:   "/certs",
 			ReadOnly: true,
 		})
 	}

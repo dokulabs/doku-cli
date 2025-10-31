@@ -5,6 +5,44 @@ All notable changes to Doku CLI will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Self-upgrade capability** (`doku self upgrade`)
+  - Automatic version checking against GitHub releases
+  - Platform-specific binary download (darwin/linux/windows, amd64/arm64)
+  - Safe binary replacement with backup
+  - Installation verification
+  - Force upgrade option with `--force` flag
+
+- **Complete lifecycle management commands**
+  - `doku start <service>` - Start stopped services
+  - `doku stop <service>` - Stop running services with graceful timeout
+  - `doku restart <service>` - Restart services
+  - `doku logs <service>` - View service logs with follow mode (`-f`)
+  - `doku list` - List all services (with `--all` flag for stopped services)
+  - `doku info <service>` - Detailed service information with resource usage
+  - `doku remove <service>` - Remove services with confirmation prompts
+  - `doku env <service>` - Display environment variables with masking
+
+- **Traefik management support**
+  - All lifecycle commands now support `traefik` or `doku-traefik` as service name
+  - Special handling for Traefik (reverse proxy container)
+  - Warning messages when stopping Traefik (affects all services)
+  - Prevention of Traefik removal (guides to `doku uninstall`)
+  - Dashboard URL display for Traefik operations
+
+- **Environment variable management** (`doku env`)
+  - Display service environment variables
+  - Automatic masking of sensitive values (passwords, tokens, secrets)
+  - `--raw` flag to show unmasked values
+  - `--export` flag for shell export format (sourceable)
+  - `--json` flag for JSON output
+  - Support for shell sourcing: `eval $(doku env service --export --raw)`
+
+- **Enhanced init command**
+  - User confirmation before recreating Traefik
+  - Option to reuse existing Traefik container
+  - Improved DNS setup error messages
+  - Clear manual DNS setup instructions
+
 - Service installation with interactive prompts
 - Resource limits (CPU and memory)
 - Volume management and persistence
@@ -14,10 +52,15 @@ All notable changes to Doku CLI will be documented in this file.
 - Interactive configuration prompts based on catalog specs
 - Confirmation prompts before installation
 
+### Changed
+- All lifecycle commands now recognize both `traefik` and `doku-traefik` container names
+- `doku init` now prompts before recreating existing Traefik container
+- Improved error messages and user guidance across all commands
+
 ### In Development
-- Lifecycle commands (start, stop, restart, list, logs, remove, status)
 - Service health checks
 - Project management
+- Service dependency management
 
 ## [0.1.0-alpha] - 2024-10-30
 
