@@ -1,6 +1,8 @@
 package catalog
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,14 +10,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/BurntSushi/toml"
 	"github.com/dokulabs/doku-cli/pkg/types"
 )
 
 const (
-	// DefaultCatalogURL is the URL to the catalog repository releases
-	DefaultCatalogURL = "https://github.com/dokulabs/doku-catalog/releases/latest/download/catalog.toml"
-	CatalogFileName   = "catalog.toml"
+	// DefaultCatalogURL is the URL to the catalog repository releases (hierarchical format)
+	DefaultCatalogURL = "https://github.com/dokulabs/doku-catalog/releases/latest/download/catalog-v2.tar.gz"
+	CatalogFileName   = "catalog.yaml"
 )
 
 // Manager handles catalog operations
@@ -42,14 +43,14 @@ func (m *Manager) GetCatalogPath() string {
 	return filepath.Join(m.catalogDir, CatalogFileName)
 }
 
-// FetchCatalog downloads the catalog from the configured URL
+// FetchCatalog downloads and extracts the hierarchical catalog
 func (m *Manager) FetchCatalog() error {
 	// Ensure catalog directory exists
 	if err := os.MkdirAll(m.catalogDir, 0755); err != nil {
 		return fmt.Errorf("failed to create catalog directory: %w", err)
 	}
 
-	// Download catalog
+	// Download catalog tarball
 	resp, err := http.Get(m.catalogURL)
 	if err != nil {
 		return fmt.Errorf("failed to download catalog: %w", err)
@@ -60,49 +61,107 @@ func (m *Manager) FetchCatalog() error {
 		return fmt.Errorf("failed to download catalog: HTTP %d", resp.StatusCode)
 	}
 
-	// Create temporary file
-	tmpPath := m.GetCatalogPath() + ".tmp"
-	tmpFile, err := os.Create(tmpPath)
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+	// Create temporary directory for extraction
+	tmpDir := m.catalogDir + ".tmp"
+	if err := os.RemoveAll(tmpDir); err != nil {
+		return fmt.Errorf("failed to clean temp directory: %w", err)
 	}
-	defer tmpFile.Close()
-
-	// Copy content to temp file
-	_, err = io.Copy(tmpFile, resp.Body)
-	if err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("failed to save catalog: %w", err)
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
-	// Close the file before renaming
-	tmpFile.Close()
+	// Extract tar.gz
+	if err := extractTarGz(resp.Body, tmpDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return fmt.Errorf("failed to extract catalog: %w", err)
+	}
 
-	// Atomically replace the catalog file
-	if err := os.Rename(tmpPath, m.GetCatalogPath()); err != nil {
-		os.Remove(tmpPath)
+	// Remove old catalog directory
+	if err := os.RemoveAll(m.catalogDir); err != nil {
+		return fmt.Errorf("failed to remove old catalog: %w", err)
+	}
+
+	// Move temp directory to catalog directory
+	if err := os.Rename(tmpDir, m.catalogDir); err != nil {
 		return fmt.Errorf("failed to update catalog: %w", err)
 	}
 
 	return nil
 }
 
-// LoadCatalog loads and parses the catalog from disk
+// extractTarGz extracts a tar.gz archive to the specified directory
+func extractTarGz(r io.Reader, destDir string) error {
+	gzr, err := gzip.NewReader(r)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzr.Close()
+
+	tr := tar.NewReader(gzr)
+
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar: %w", err)
+		}
+
+		// Construct target path
+		target := filepath.Join(destDir, header.Name)
+
+		// Ensure the target is within destDir (security check)
+		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) {
+			return fmt.Errorf("invalid file path in archive: %s", header.Name)
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return fmt.Errorf("failed to create directory: %w", err)
+			}
+
+		case tar.TypeReg:
+			// Create parent directories
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return fmt.Errorf("failed to create parent directory: %w", err)
+			}
+
+			// Create file
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return fmt.Errorf("failed to create file: %w", err)
+			}
+
+			if _, err := io.Copy(f, tr); err != nil {
+				f.Close()
+				return fmt.Errorf("failed to write file: %w", err)
+			}
+			f.Close()
+		}
+	}
+
+	return nil
+}
+
+// LoadCatalog loads and parses the catalog from hierarchical structure
 func (m *Manager) LoadCatalog() (*types.ServiceCatalog, error) {
 	catalogPath := m.GetCatalogPath()
 
-	// Check if catalog exists
+	// Check if catalog metadata exists
 	if _, err := os.Stat(catalogPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("catalog not found, please run 'doku catalog update'")
 	}
 
-	// Parse catalog
-	var catalog types.ServiceCatalog
-	if _, err := toml.DecodeFile(catalogPath, &catalog); err != nil {
-		return nil, fmt.Errorf("failed to parse catalog: %w", err)
+	// Use hierarchical loader
+	loader := NewHierarchicalLoader(m.catalogDir)
+	catalog, err := loader.Load()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load catalog: %w", err)
 	}
 
-	return &catalog, nil
+	return catalog, nil
 }
 
 // GetService retrieves a specific service from the catalog

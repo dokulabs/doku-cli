@@ -10,12 +10,53 @@ func GenerateContainerName(instanceName string) string {
 	return fmt.Sprintf("doku-%s", instanceName)
 }
 
-// GenerateVolumeName generates a Docker volume name
-func GenerateVolumeName(instanceName, volumeType string) string {
-	if volumeType == "" {
+// GenerateVolumeName generates a Docker volume name from a volume path
+// Sanitizes the path to create a valid Docker volume name
+func GenerateVolumeName(instanceName, volumePath string) string {
+	if volumePath == "" {
 		return fmt.Sprintf("doku-%s-data", instanceName)
 	}
-	return fmt.Sprintf("doku-%s-%s", instanceName, volumeType)
+
+	// Extract meaningful identifier from volume path
+	// e.g., "/var/lib/postgresql/data" -> "postgresql-data"
+	//       "/data/db" -> "db"
+	//       "/var/lib/mysql" -> "mysql"
+
+	// Split path and get meaningful parts
+	parts := []string{}
+	for _, part := range splitPath(volumePath) {
+		// Skip common prefixes
+		if part != "var" && part != "lib" && part != "usr" && part != "share" && part != "" {
+			parts = append(parts, part)
+		}
+	}
+
+	// Join parts with hyphens
+	if len(parts) > 0 {
+		volumeType := joinParts(parts, "-")
+		return fmt.Sprintf("doku-%s-%s", instanceName, volumeType)
+	}
+
+	return fmt.Sprintf("doku-%s-data", instanceName)
+}
+
+// splitPath splits a file path into parts
+func splitPath(path string) []string {
+	// Remove leading/trailing slashes and split
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return []string{}
+	}
+	return strings.Split(path, "/")
+}
+
+// joinParts joins parts with separator, max 3 parts
+func joinParts(parts []string, sep string) string {
+	// Limit to 3 parts to avoid very long names
+	if len(parts) > 3 {
+		parts = parts[len(parts)-3:]
+	}
+	return strings.Join(parts, sep)
 }
 
 // ParseContainerName extracts instance name from container name
