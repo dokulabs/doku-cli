@@ -44,6 +44,11 @@ func (m *Manager) GetCatalogPath() string {
 	return filepath.Join(m.catalogDir, CatalogFileName)
 }
 
+// GetCatalogDir returns the catalog directory path
+func (m *Manager) GetCatalogDir() string {
+	return m.catalogDir
+}
+
 // FetchCatalog downloads and extracts the hierarchical catalog
 func (m *Manager) FetchCatalog() error {
 	// Ensure catalog directory exists

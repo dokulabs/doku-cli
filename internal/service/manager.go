@@ -46,7 +46,12 @@ func (m *Manager) Start(instanceName string) error {
 		return fmt.Errorf("instance '%s' is already running", instanceName)
 	}
 
-	// Start container
+	// Handle multi-container services
+	if instance.IsMultiContainer {
+		return m.startMultiContainerService(instance)
+	}
+
+	// Start single container
 	if err := m.dockerClient.ContainerStart(instance.ContainerName); err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
@@ -70,7 +75,12 @@ func (m *Manager) Stop(instanceName string) error {
 		return fmt.Errorf("instance '%s' is already stopped", instanceName)
 	}
 
-	// Stop container
+	// Handle multi-container services
+	if instance.IsMultiContainer {
+		return m.stopMultiContainerService(instance)
+	}
+
+	// Stop single container
 	timeout := 10
 	if err := m.dockerClient.ContainerStop(instance.ContainerName, &timeout); err != nil {
 		return fmt.Errorf("failed to stop container: %w", err)
@@ -90,7 +100,12 @@ func (m *Manager) Restart(instanceName string) error {
 		return fmt.Errorf("instance not found: %w", err)
 	}
 
-	// Restart container
+	// Handle multi-container services
+	if instance.IsMultiContainer {
+		return m.restartMultiContainerService(instance)
+	}
+
+	// Restart single container
 	timeout := 10
 	if err := m.dockerClient.ContainerRestart(instance.ContainerName, &timeout); err != nil {
 		return fmt.Errorf("failed to restart container: %w", err)
@@ -107,6 +122,11 @@ func (m *Manager) Remove(instanceName string, force bool) error {
 	instance, err := m.configMgr.GetInstance(instanceName)
 	if err != nil {
 		return fmt.Errorf("instance not found: %w", err)
+	}
+
+	// Handle multi-container services
+	if instance.IsMultiContainer {
+		return m.removeMultiContainerService(instance, force)
 	}
 
 	// Stop container first if running and not forcing
@@ -173,6 +193,11 @@ func (m *Manager) GetStatus(instanceName string) (types.ServiceStatus, error) {
 	instance, err := m.configMgr.GetInstance(instanceName)
 	if err != nil {
 		return types.StatusUnknown, fmt.Errorf("instance not found: %w", err)
+	}
+
+	// Handle multi-container services
+	if instance.IsMultiContainer {
+		return m.getMultiContainerStatus(instance)
 	}
 
 	// Check actual container status
@@ -330,4 +355,233 @@ func indexOfSubstring(s, substr string) int {
 		}
 	}
 	return -1
+}
+
+// Multi-Container Service Methods
+
+// startMultiContainerService starts all containers in a multi-container service
+func (m *Manager) startMultiContainerService(instance *types.Instance) error {
+	for i := range instance.Containers {
+		container := &instance.Containers[i]
+
+		if err := m.dockerClient.ContainerStart(container.ContainerID); err != nil {
+			return fmt.Errorf("failed to start container %s: %w", container.Name, err)
+		}
+
+		container.Status = "running"
+		fmt.Printf("Started container: %s\n", container.Name)
+
+		// Brief pause between containers
+		time.Sleep(time.Second)
+	}
+
+	// Update overall instance status
+	instance.Status = types.StatusRunning
+	instance.UpdatedAt = time.Now()
+
+	return m.configMgr.UpdateInstance(instance.Name, instance)
+}
+
+// stopMultiContainerService stops all containers in a multi-container service
+func (m *Manager) stopMultiContainerService(instance *types.Instance) error {
+	// Stop containers in reverse order
+	for i := len(instance.Containers) - 1; i >= 0; i-- {
+		container := &instance.Containers[i]
+
+		timeout := 10
+		if err := m.dockerClient.ContainerStop(container.ContainerID, &timeout); err != nil {
+			return fmt.Errorf("failed to stop container %s: %w", container.Name, err)
+		}
+
+		container.Status = "stopped"
+		fmt.Printf("Stopped container: %s\n", container.Name)
+	}
+
+	// Update overall instance status
+	instance.Status = types.StatusStopped
+	instance.UpdatedAt = time.Now()
+
+	return m.configMgr.UpdateInstance(instance.Name, instance)
+}
+
+// restartMultiContainerService restarts all containers in a multi-container service
+func (m *Manager) restartMultiContainerService(instance *types.Instance) error {
+	for i := range instance.Containers {
+		container := &instance.Containers[i]
+
+		timeout := 10
+		if err := m.dockerClient.ContainerRestart(container.ContainerID, &timeout); err != nil {
+			return fmt.Errorf("failed to restart container %s: %w", container.Name, err)
+		}
+
+		fmt.Printf("Restarted container: %s\n", container.Name)
+
+		// Brief pause between containers
+		time.Sleep(time.Second)
+	}
+
+	// Update timestamp
+	instance.UpdatedAt = time.Now()
+
+	return m.configMgr.UpdateInstance(instance.Name, instance)
+}
+
+// removeMultiContainerService removes all containers in a multi-container service
+func (m *Manager) removeMultiContainerService(instance *types.Instance, force bool) error {
+	networkMgr := docker.NewNetworkManager(m.dockerClient)
+
+	// Remove containers in reverse order
+	for i := len(instance.Containers) - 1; i >= 0; i-- {
+		container := &instance.Containers[i]
+
+		// Stop container if running and not forcing
+		if container.Status == "running" && !force {
+			timeout := 10
+			if err := m.dockerClient.ContainerStop(container.ContainerID, &timeout); err != nil {
+				fmt.Printf("Warning: failed to stop container %s: %v\n", container.Name, err)
+			}
+		}
+
+		// Disconnect from network
+		if err := networkMgr.DisconnectContainer("doku-network", container.FullName, force); err != nil {
+			fmt.Printf("Warning: failed to disconnect %s from network: %v\n", container.Name, err)
+		}
+
+		// Remove container
+		if err := m.dockerClient.ContainerRemove(container.ContainerID, force); err != nil {
+			return fmt.Errorf("failed to remove container %s: %w", container.Name, err)
+		}
+
+		fmt.Printf("Removed container: %s\n", container.Name)
+	}
+
+	// Remove associated volumes
+	if err := m.removeMultiContainerVolumes(instance); err != nil {
+		fmt.Printf("Warning: failed to remove some volumes: %v\n", err)
+	}
+
+	// Remove from config
+	return m.configMgr.RemoveInstance(instance.Name)
+}
+
+// getMultiContainerStatus checks the status of all containers in a multi-container service
+func (m *Manager) getMultiContainerStatus(instance *types.Instance) (types.ServiceStatus, error) {
+	runningCount := 0
+	stoppedCount := 0
+	failedCount := 0
+
+	for i := range instance.Containers {
+		container := &instance.Containers[i]
+
+		info, err := m.dockerClient.ContainerInspect(container.ContainerID)
+		if err != nil {
+			container.Status = "unknown"
+			continue
+		}
+
+		if info.State.Running {
+			container.Status = "running"
+			runningCount++
+		} else if info.State.Dead || info.State.OOMKilled {
+			container.Status = "failed"
+			failedCount++
+		} else {
+			container.Status = "stopped"
+			stoppedCount++
+		}
+	}
+
+	// Determine overall status
+	var status types.ServiceStatus
+	if failedCount > 0 {
+		status = types.StatusFailed
+	} else if runningCount == len(instance.Containers) {
+		status = types.StatusRunning
+	} else if stoppedCount == len(instance.Containers) {
+		status = types.StatusStopped
+	} else {
+		// Partially running
+		status = types.StatusRunning
+	}
+
+	// Update config if status changed
+	if status != instance.Status {
+		instance.Status = status
+		instance.UpdatedAt = time.Now()
+		m.configMgr.UpdateInstance(instance.Name, instance)
+	}
+
+	return status, nil
+}
+
+// removeMultiContainerVolumes removes volumes for a multi-container service
+func (m *Manager) removeMultiContainerVolumes(instance *types.Instance) error {
+	for _, container := range instance.Containers {
+		// Try to inspect container to get volume info
+		containerInfo, err := m.dockerClient.ContainerInspect(container.ContainerID)
+		if err != nil {
+			continue
+		}
+
+		// Remove named volumes
+		for _, mount := range containerInfo.Mounts {
+			if mount.Type == "volume" {
+				// Only remove volumes managed by doku
+				if len(mount.Name) > 5 && mount.Name[:5] == "doku-" {
+					if err := m.dockerClient.VolumeRemove(mount.Name, false); err != nil {
+						fmt.Printf("Warning: failed to remove volume %s: %v\n", mount.Name, err)
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// GetContainerLogs retrieves logs from a specific container in a multi-container service
+func (m *Manager) GetContainerLogs(instanceName, containerName string, follow bool) (string, error) {
+	instance, err := m.configMgr.GetInstance(instanceName)
+	if err != nil {
+		return "", fmt.Errorf("instance not found: %w", err)
+	}
+
+	if !instance.IsMultiContainer {
+		return "", fmt.Errorf("instance '%s' is not a multi-container service", instanceName)
+	}
+
+	// Find the container
+	var targetContainer *types.ContainerInfo
+	for i := range instance.Containers {
+		if instance.Containers[i].Name == containerName {
+			targetContainer = &instance.Containers[i]
+			break
+		}
+	}
+
+	if targetContainer == nil {
+		return "", fmt.Errorf("container '%s' not found in service '%s'", containerName, instanceName)
+	}
+
+	// Get logs
+	logsReader, err := m.dockerClient.ContainerLogs(targetContainer.ContainerID, follow)
+	if err != nil {
+		return "", fmt.Errorf("failed to get logs: %w", err)
+	}
+	defer logsReader.Close()
+
+	// Read all logs into string
+	buf := make([]byte, 4096)
+	var logs string
+	for {
+		n, err := logsReader.Read(buf)
+		if n > 0 {
+			logs += string(buf[:n])
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	return logs, nil
 }

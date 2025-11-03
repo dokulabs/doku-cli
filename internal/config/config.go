@@ -40,6 +40,17 @@ func New() (*Manager, error) {
 	}, nil
 }
 
+// NewWithCustomPath creates a new configuration manager with a custom doku directory path
+// This is primarily used for testing purposes
+func NewWithCustomPath(dokuDir string) (*Manager, error) {
+	configPath := filepath.Join(dokuDir, ConfigFileName)
+
+	return &Manager{
+		configPath: configPath,
+		dokuDir:    dokuDir,
+	}, nil
+}
+
 // Initialize creates the Doku directory and default configuration
 func (m *Manager) Initialize() error {
 	// Create .doku directory if it doesn't exist

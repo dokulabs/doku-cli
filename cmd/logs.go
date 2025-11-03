@@ -5,11 +5,13 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/internal/service"
+	"github.com/dokulabs/doku-cli/pkg/types"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -18,6 +20,8 @@ var (
 	logsFollow     bool
 	logsTail       string
 	logsTimestamps bool
+	logsContainer  string
+	logsAll        bool
 )
 
 var logsCmd = &cobra.Command{
@@ -42,6 +46,8 @@ func init() {
 	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "Follow log output (stream in real-time)")
 	logsCmd.Flags().StringVar(&logsTail, "tail", "all", "Number of lines to show from the end of the logs")
 	logsCmd.Flags().BoolVarP(&logsTimestamps, "timestamps", "t", false, "Show timestamps")
+	logsCmd.Flags().StringVarP(&logsContainer, "container", "c", "", "Specific container name (for multi-container services)")
+	logsCmd.Flags().BoolVarP(&logsAll, "all", "a", false, "Show logs from all containers (multi-container only)")
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
@@ -90,6 +96,11 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		instance, err := serviceMgr.Get(instanceName)
 		if err != nil {
 			return fmt.Errorf("service '%s' not found. Use 'doku list' to see installed services", instanceName)
+		}
+
+		// Handle multi-container services
+		if instance.IsMultiContainer {
+			return handleMultiContainerLogs(dockerClient, instance, logsFollow, logsContainer, logsAll)
 		}
 
 		containerName = instance.ContainerName
@@ -151,4 +162,97 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// handleMultiContainerLogs handles log viewing for multi-container services
+func handleMultiContainerLogs(dockerClient *docker.Client, instance *types.Instance, follow bool, containerName string, showAll bool) error {
+	// If --all flag is set, show logs from all containers
+	if showAll {
+		fmt.Println()
+		color.Cyan("📋 Logs from all containers in %s:", instance.Name)
+		fmt.Println()
+
+		for _, container := range instance.Containers {
+			color.New(color.Bold).Printf("=== %s ===\n", container.Name)
+			logsReader, err := dockerClient.ContainerLogs(container.ContainerID, false)
+			if err != nil {
+				color.Yellow("Failed to get logs from %s: %v\n", container.Name, err)
+				continue
+			}
+
+			io.Copy(os.Stdout, logsReader)
+			logsReader.Close()
+			fmt.Println()
+		}
+
+		return nil
+	}
+
+	// If --container flag is set, show logs from specific container
+	if containerName != "" {
+		var targetContainer *types.ContainerInfo
+		for i := range instance.Containers {
+			if instance.Containers[i].Name == containerName {
+				targetContainer = &instance.Containers[i]
+				break
+			}
+		}
+
+		if targetContainer == nil {
+			return fmt.Errorf("container '%s' not found in service '%s'.\nAvailable containers: %s",
+				containerName, instance.Name, getContainerNames(instance.Containers))
+		}
+
+		if follow {
+			color.New(color.Faint).Printf("Viewing logs from %s (Press Ctrl+C to stop)...\n", containerName)
+			fmt.Println()
+		}
+
+		logsReader, err := dockerClient.ContainerLogs(targetContainer.ContainerID, follow)
+		if err != nil {
+			return fmt.Errorf("failed to get logs: %w", err)
+		}
+		defer logsReader.Close()
+
+		// Setup signal handler for clean shutdown on Ctrl+C
+		if follow {
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+			go func() {
+				<-sigChan
+				fmt.Println()
+				color.New(color.Faint).Println("Log streaming stopped")
+				os.Exit(0)
+			}()
+		}
+
+		io.Copy(os.Stdout, logsReader)
+		return nil
+	}
+
+	// No specific container selected - show options
+	fmt.Println()
+	color.Yellow("⚠️  %s is a multi-container service with %d containers:", instance.Name, len(instance.Containers))
+	fmt.Println()
+	fmt.Println("Available containers:")
+	for _, container := range instance.Containers {
+		fmt.Printf("  • %s\n", container.Name)
+	}
+	fmt.Println()
+	color.Cyan("Usage:")
+	fmt.Printf("  doku logs %s --container <name>  # View specific container logs\n", instance.Name)
+	fmt.Printf("  doku logs %s --all               # View all container logs\n", instance.Name)
+	fmt.Println()
+
+	return nil
+}
+
+// getContainerNames returns a comma-separated list of container names
+func getContainerNames(containers []types.ContainerInfo) string {
+	names := make([]string, len(containers))
+	for i, container := range containers {
+		names[i] = container.Name
+	}
+	return strings.Join(names, ", ")
 }

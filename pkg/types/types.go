@@ -103,7 +103,18 @@ type Instance struct {
 	ServiceType      string
 	Version          string
 	Status           ServiceStatus
+
+	// Single-container fields (backward compatible)
 	ContainerName    string
+	ContainerID      string // Docker container ID
+
+	// Multi-container support (new)
+	IsMultiContainer bool            `yaml:"is_multi_container"` // Whether this is a multi-container service
+	Containers       []ContainerInfo `yaml:"containers"`         // Container information for multi-container services
+
+	// Dependencies
+	Dependencies     []string `yaml:"dependencies"` // List of service dependencies
+
 	URL              string
 	ConnectionString string
 	CreatedAt        time.Time
@@ -113,6 +124,17 @@ type Instance struct {
 	Traefik          TraefikInstanceConfig
 	Volumes          map[string]string
 	Environment      map[string]string
+}
+
+// ContainerInfo holds information about a container in a multi-container service
+type ContainerInfo struct {
+	Name        string   `yaml:"name"`        // Container name (e.g., "frontend", "query-service")
+	ContainerID string   `yaml:"id"`          // Docker container ID
+	FullName    string   `yaml:"full_name"`   // Full container name (e.g., "doku-signoz-frontend")
+	Primary     bool     `yaml:"primary"`     // Is this the primary/main container?
+	Status      string   `yaml:"status"`      // Container status (running, stopped, etc.)
+	Ports       []string `yaml:"ports"`       // Port mappings
+	Image       string   `yaml:"image"`       // Docker image used
 }
 
 // NetworkConfig holds network configuration for an instance
@@ -204,4 +226,100 @@ type MonitoringConfig struct {
 	DSN         string    `json:"dsn" yaml:"dsn"`                 // Endpoint (OTLP for SignOz, DSN for Sentry)
 	APIKey      string    `json:"api_key" yaml:"api_key"`         // API key if needed
 	InstallTime time.Time `json:"install_time" yaml:"install_time"` // When monitoring was installed
+}
+
+// Instance helper methods
+
+// GetPrimaryContainer returns the primary container for multi-container instances
+func (i *Instance) GetPrimaryContainer() *ContainerInfo {
+	if !i.IsMultiContainer {
+		return nil
+	}
+
+	for idx := range i.Containers {
+		if i.Containers[idx].Primary {
+			return &i.Containers[idx]
+		}
+	}
+
+	// If no explicit primary, return first container
+	if len(i.Containers) > 0 {
+		return &i.Containers[0]
+	}
+
+	return nil
+}
+
+// GetContainerByName finds a container by name in multi-container instances
+func (i *Instance) GetContainerByName(name string) *ContainerInfo {
+	if !i.IsMultiContainer {
+		return nil
+	}
+
+	for idx := range i.Containers {
+		if i.Containers[idx].Name == name {
+			return &i.Containers[idx]
+		}
+	}
+
+	return nil
+}
+
+// GetAllContainerIDs returns all container IDs for this instance
+func (i *Instance) GetAllContainerIDs() []string {
+	if !i.IsMultiContainer {
+		if i.ContainerID != "" {
+			return []string{i.ContainerID}
+		}
+		return []string{}
+	}
+
+	ids := make([]string, 0, len(i.Containers))
+	for _, container := range i.Containers {
+		if container.ContainerID != "" {
+			ids = append(ids, container.ContainerID)
+		}
+	}
+	return ids
+}
+
+// GetMainContainerID returns the container ID for single-container or primary container for multi-container
+func (i *Instance) GetMainContainerID() string {
+	if !i.IsMultiContainer {
+		return i.ContainerID
+	}
+
+	primary := i.GetPrimaryContainer()
+	if primary != nil {
+		return primary.ContainerID
+	}
+
+	return ""
+}
+
+// GetMainContainerName returns the container name for single-container or primary container for multi-container
+func (i *Instance) GetMainContainerName() string {
+	if !i.IsMultiContainer {
+		return i.ContainerName
+	}
+
+	primary := i.GetPrimaryContainer()
+	if primary != nil {
+		return primary.FullName
+	}
+
+	return ""
+}
+
+// HasDependencies returns true if this instance has dependencies
+func (i *Instance) HasDependencies() bool {
+	return len(i.Dependencies) > 0
+}
+
+// ContainerCount returns the number of containers for this instance
+func (i *Instance) ContainerCount() int {
+	if !i.IsMultiContainer {
+		return 1
+	}
+	return len(i.Containers)
 }

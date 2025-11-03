@@ -178,10 +178,27 @@ func (l *HierarchicalLoader) loadVersionSpec(versionDir string) (*types.ServiceS
 		Port:          config.Port,
 		AdminPort:     config.AdminPort,
 		Protocol:      config.Protocol,
+		Ports:         config.Ports,
 		Volumes:       config.Volumes,
 		Command:       config.Command,
 		Environment:   config.Environment,
-		Dependencies:  config.Dependencies,
+		Containers:    config.Containers,
+	}
+
+	// Handle dependencies - convert old format to new format if needed
+	if len(config.DependenciesV2) > 0 {
+		// Use new format if available
+		spec.Dependencies = config.DependenciesV2
+	} else if len(config.Dependencies) > 0 {
+		// Convert old string format to new DependencySpec format
+		spec.Dependencies = make([]types.DependencySpec, len(config.Dependencies))
+		for i, depName := range config.Dependencies {
+			spec.Dependencies[i] = types.DependencySpec{
+				Name:     depName,
+				Version:  "latest",
+				Required: true,
+			}
+		}
 	}
 
 	// Copy healthcheck if present
@@ -236,13 +253,20 @@ type VersionConfig struct {
 	Port          int                          `yaml:"port"`
 	AdminPort     int                          `yaml:"admin_port,omitempty"`
 	Protocol      string                       `yaml:"protocol"`
+	Ports         []string                     `yaml:"ports,omitempty"` // NEW: Additional port mappings
 	Volumes       []string                     `yaml:"volumes,omitempty"`
 	Command       []string                     `yaml:"command,omitempty"`
 	Environment   map[string]string            `yaml:"environment,omitempty"`
 	Healthcheck   *types.Healthcheck           `yaml:"healthcheck,omitempty"`
 	Resources     *types.ResourceRequirements  `yaml:"resources,omitempty"`
 	Configuration *types.ServiceConfiguration  `yaml:"configuration,omitempty"`
-	Dependencies  []string                     `yaml:"dependencies,omitempty"`
+
+	// Multi-container support (NEW)
+	Containers        []types.ContainerSpec    `yaml:"containers,omitempty"`
+
+	// Dependencies - support both old and new formats
+	Dependencies      []string                 `yaml:"dependencies,omitempty"`     // OLD: Simple string list (for backward compatibility)
+	DependenciesV2    []types.DependencySpec   `yaml:"dependencies_v2,omitempty"` // NEW: Full dependency specs
 }
 
 // ListCategories returns all available categories

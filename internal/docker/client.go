@@ -359,6 +359,18 @@ func (c *Client) NetworkConnect(networkID, containerID string) error {
 	return nil
 }
 
+// NetworkConnectWithAliases connects a container to a network with custom aliases
+func (c *Client) NetworkConnectWithAliases(networkID, containerID string, aliases []string) error {
+	endpointSettings := &network.EndpointSettings{
+		Aliases: aliases,
+	}
+
+	if err := c.cli.NetworkConnect(c.ctx, networkID, containerID, endpointSettings); err != nil {
+		return fmt.Errorf("failed to connect container to network with aliases: %w", err)
+	}
+	return nil
+}
+
 // NetworkDisconnect disconnects a container from a network
 func (c *Client) NetworkDisconnect(networkID, containerID string, force bool) error {
 	if err := c.cli.NetworkDisconnect(c.ctx, networkID, containerID, force); err != nil {

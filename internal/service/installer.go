@@ -51,18 +51,30 @@ func NewInstaller(dockerClient *docker.Client, configMgr *config.Manager, catalo
 
 // InstallOptions holds options for service installation
 type InstallOptions struct {
-	ServiceName  string            // Service name from catalog
-	Version      string            // Version to install (empty = latest)
-	InstanceName string            // Custom instance name (empty = auto-generate)
-	Environment  map[string]string // Override environment variables
-	MemoryLimit  string            // Override memory limit
-	CPULimit     string            // Override CPU limit
-	Volumes      map[string]string // Volume mappings (host:container)
-	Internal     bool              // If true, don't expose via Traefik
+	ServiceName       string            // Service name from catalog
+	Version           string            // Version to install (empty = latest)
+	InstanceName      string            // Custom instance name (empty = auto-generate)
+	Environment       map[string]string // Override environment variables
+	MemoryLimit       string            // Override memory limit
+	CPULimit          string            // Override CPU limit
+	Volumes           map[string]string // Volume mappings (host:container)
+	Internal          bool              // If true, don't expose via Traefik
+
+	// Dependency management (Phase 3)
+	SkipDependencies  bool              // If true, skip dependency resolution
+	AutoInstallDeps   bool              // If true, auto-install dependencies without prompting
+	IsDepend          bool              // Internal: true if this is being installed as a dependency
 }
 
 // Install installs a service from the catalog
 func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
+	// Step 1: Resolve dependencies (Phase 3)
+	if !opts.SkipDependencies && !opts.IsDepend {
+		if err := i.resolveDependencies(opts); err != nil {
+			return nil, err
+		}
+	}
+
 	// Get service spec from catalog
 	spec, err := i.catalogMgr.GetServiceVersion(opts.ServiceName, opts.Version)
 	if err != nil {
@@ -100,6 +112,12 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		return nil, fmt.Errorf("instance '%s' already exists", instanceName)
 	}
 
+	// Step 2: Check if multi-container service (Phase 3)
+	if spec.IsMultiContainer() {
+		return i.installMultiContainer(opts, spec, instanceName, version)
+	}
+
+	// Single-container installation (existing logic)
 	// Merge environment variables
 	env := i.mergeEnvironment(spec.Environment, opts.Environment)
 
@@ -163,9 +181,16 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		return nil, fmt.Errorf("failed to create container: %w", err)
 	}
 
-	// Connect to doku-network
+	// Connect to doku-network with aliases
 	networkMgr := docker.NewNetworkManager(i.dockerClient)
-	if err := networkMgr.ConnectContainer("doku-network", containerName); err != nil {
+
+	// Build network aliases: service name and instance name
+	aliases := []string{opts.ServiceName}
+	if instanceName != opts.ServiceName {
+		aliases = append(aliases, instanceName)
+	}
+
+	if err := networkMgr.ConnectContainerWithAliases("doku-network", containerID, aliases); err != nil {
 		// Cleanup on failure
 		i.dockerClient.ContainerRemove(containerName, true)
 		return nil, fmt.Errorf("failed to connect to network: %w", err)
@@ -190,6 +215,8 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		Version:          version,
 		Status:           types.StatusRunning,
 		ContainerName:    containerName,
+		ContainerID:      containerID, // Phase 3: Added for consistency
+		IsMultiContainer: false,       // Phase 3: Single-container
 		URL:              serviceURL,
 		ConnectionString: i.buildConnectionString(instanceName, spec, env),
 		Environment:      env,
@@ -311,14 +338,44 @@ func (i *Installer) createMounts(instanceName string, spec *types.ServiceSpec, c
 	mounts := []mount.Mount{}
 
 	// Create named volumes for each spec volume
-	for _, volumePath := range spec.Volumes {
-		volumeName := docker.GenerateVolumeName(instanceName, volumePath)
+	for idx, volumePath := range spec.Volumes {
+		// Check if this is a bind mount (contains ":")
+		if strings.Contains(volumePath, ":") {
+			parts := strings.Split(volumePath, ":")
+			if len(parts) >= 2 {
+				source := parts[0]
+				target := parts[1]
+				readOnly := len(parts) == 3 && parts[2] == "ro"
 
-		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeVolume,
-			Source: volumeName,
-			Target: volumePath,
-		})
+				// Substitute ${CATALOG_DIR} placeholder
+				catalogDir := i.catalogMgr.GetCatalogDir()
+				serviceName := strings.Split(instanceName, "-")[0] // Extract service name from instance
+
+				// Determine service category based on service name
+				serviceCategory := "database" // default
+				if strings.Contains(instanceName, "clickhouse") {
+					serviceCategory = "database"
+				}
+
+				serviceVersionDir := fmt.Sprintf("%s/services/%s/%s/versions/latest", catalogDir, serviceCategory, serviceName)
+				source = strings.ReplaceAll(source, "${CATALOG_DIR}", serviceVersionDir)
+
+				mounts = append(mounts, mount.Mount{
+					Type:     mount.TypeBind,
+					Source:   source,
+					Target:   target,
+					ReadOnly: readOnly,
+				})
+			}
+		} else {
+			volumeName := docker.GenerateVolumeName(instanceName, fmt.Sprintf("%s-%d", volumePath, idx))
+
+			mounts = append(mounts, mount.Mount{
+				Type:   mount.TypeVolume,
+				Source: volumeName,
+				Target: volumePath,
+			})
+		}
 	}
 
 	// Add custom volume mounts

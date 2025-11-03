@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/dokulabs/doku-cli/internal/config"
@@ -96,11 +97,29 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	color.New(color.Bold, color.FgRed).Printf("⚠️  Remove Service: %s\n", instanceName)
 	fmt.Println()
 	fmt.Println("This will remove:")
-	fmt.Printf("  • Container: %s\n", instance.ContainerName)
+
+	// Show container information
+	if instance.IsMultiContainer {
+		fmt.Printf("  • Multi-container service (%d containers):\n", len(instance.Containers))
+		for _, container := range instance.Containers {
+			fmt.Printf("    - %s\n", container.Name)
+		}
+	} else {
+		fmt.Printf("  • Container: %s\n", instance.ContainerName)
+	}
+
+	// Show volume information
 	if len(instance.Volumes) > 0 {
 		fmt.Printf("  • Volumes: %d volume(s) ", len(instance.Volumes))
 		color.Red("(data will be lost!)")
 	}
+
+	// Show dependencies
+	if len(instance.Dependencies) > 0 {
+		fmt.Printf("  • Dependencies: %s\n", strings.Join(instance.Dependencies, ", "))
+		color.New(color.Faint).Println("    (Dependencies will NOT be removed)")
+	}
+
 	fmt.Printf("  • Configuration for: %s\n", instanceName)
 	fmt.Println()
 

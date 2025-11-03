@@ -15,13 +15,15 @@ import (
 )
 
 var (
-	installName     string
-	installEnv      []string
-	installMemory   string
-	installCPU      string
-	installVolumes  []string
-	installYes      bool
-	installInternal bool
+	installName           string
+	installEnv            []string
+	installMemory         string
+	installCPU            string
+	installVolumes        []string
+	installYes            bool
+	installInternal       bool
+	installSkipDeps       bool
+	installNoAutoInstall  bool
 )
 
 var installCmd = &cobra.Command{
@@ -50,6 +52,8 @@ func init() {
 	installCmd.Flags().StringSliceVar(&installVolumes, "volume", []string{}, "Volume mounts (host:container)")
 	installCmd.Flags().BoolVarP(&installYes, "yes", "y", false, "Skip confirmation prompts")
 	installCmd.Flags().BoolVar(&installInternal, "internal", false, "Install as internal service (no Traefik exposure)")
+	installCmd.Flags().BoolVar(&installSkipDeps, "skip-deps", false, "Skip dependency resolution and installation")
+	installCmd.Flags().BoolVar(&installNoAutoInstall, "no-auto-install-deps", false, "Prompt before installing dependencies (interactive mode)")
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
@@ -106,11 +110,37 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println(catalogService.Description)
 	fmt.Println()
 
-	// Show image and resource info
-	fmt.Printf("Image: %s\n", spec.Image)
+	// Show multi-container info or image
+	if spec.IsMultiContainer() {
+		fmt.Printf("Type: Multi-container service\n")
+		fmt.Printf("Containers: %d\n", len(spec.Containers))
+		for _, container := range spec.Containers {
+			prefix := "  •"
+			if container.Primary {
+				prefix = "  ⭐"
+			}
+			fmt.Printf("%s %s (%s)\n", prefix, container.Name, container.Image)
+		}
+	} else {
+		fmt.Printf("Image: %s\n", spec.Image)
+	}
+
 	if spec.Resources != nil {
 		fmt.Printf("Memory: %s - %s\n", spec.Resources.MemoryMin, spec.Resources.MemoryMax)
 		fmt.Printf("CPU: %s - %s cores\n", spec.Resources.CPUMin, spec.Resources.CPUMax)
+	}
+
+	// Show dependencies if any
+	if len(spec.Dependencies) > 0 {
+		fmt.Println()
+		color.Cyan("Dependencies:")
+		for _, dep := range spec.Dependencies {
+			required := "optional"
+			if dep.Required {
+				required = "required"
+			}
+			fmt.Printf("  • %s (%s) - %s\n", dep.Name, dep.Version, required)
+		}
 	}
 	fmt.Println()
 
@@ -217,14 +247,16 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	// Install service
 	opts := service.InstallOptions{
-		ServiceName:  serviceName,
-		Version:      actualVersion,
-		InstanceName: installName,
-		Environment:  envOverrides,
-		MemoryLimit:  installMemory,
-		CPULimit:     installCPU,
-		Volumes:      volumeMounts,
-		Internal:     installInternal,
+		ServiceName:      serviceName,
+		Version:          actualVersion,
+		InstanceName:     installName,
+		Environment:      envOverrides,
+		MemoryLimit:      installMemory,
+		CPULimit:         installCPU,
+		Volumes:          volumeMounts,
+		Internal:         installInternal,
+		SkipDependencies: installSkipDeps,
+		AutoInstallDeps:  !installNoAutoInstall, // Invert: if --no-auto-install-deps is true, AutoInstallDeps should be false
 	}
 
 	instance, err := installer.Install(opts)
@@ -237,11 +269,24 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	color.Green("✓ Successfully installed %s", instance.Name)
 	fmt.Println()
 
+	// Show multi-container status if applicable
+	if instance.IsMultiContainer {
+		fmt.Printf("Containers running: %d\n", len(instance.Containers))
+		for _, container := range instance.Containers {
+			status := "✓"
+			if container.Status != "running" {
+				status = "✗"
+			}
+			fmt.Printf("  %s %s\n", status, container.Name)
+		}
+		fmt.Println()
+	}
+
 	// Show connection information
 	if spec.Protocol == "http" || spec.Protocol == "https" {
 		color.Cyan("Access your service:")
 		fmt.Printf("  URL: %s\n", instance.URL)
-	} else {
+	} else if !instance.IsMultiContainer {
 		color.Cyan("Connection information:")
 		fmt.Printf("  Host: %s\n", instance.Name)
 		fmt.Printf("  Port: %d\n", instance.Network.InternalPort)

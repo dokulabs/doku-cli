@@ -112,6 +112,16 @@ func (nm *NetworkManager) ConnectContainer(networkName, containerID string) erro
 	return nm.client.NetworkConnect(network.ID, containerID)
 }
 
+// ConnectContainerWithAliases connects a container to a network with custom aliases
+func (nm *NetworkManager) ConnectContainerWithAliases(networkName, containerID string, aliases []string) error {
+	network, err := nm.GetNetworkByName(networkName)
+	if err != nil {
+		return err
+	}
+
+	return nm.client.NetworkConnectWithAliases(network.ID, containerID, aliases)
+}
+
 // DisconnectContainer disconnects a container from a network
 func (nm *NetworkManager) DisconnectContainer(networkName, containerID string, force bool) error {
 	network, err := nm.GetNetworkByName(networkName)

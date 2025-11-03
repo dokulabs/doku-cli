@@ -123,6 +123,12 @@ func filterInstances(instances []*types.Instance, serviceFilter string, showAll 
 }
 
 func updateInstanceStatus(ctx context.Context, dockerClient *docker.Client, instance *types.Instance) {
+	// Handle multi-container services
+	if instance.IsMultiContainer {
+		updateMultiContainerStatus(ctx, dockerClient, instance)
+		return
+	}
+
 	// Try to inspect the container
 	containerInfo, err := dockerClient.ContainerInspect(instance.ContainerName)
 	if err != nil {
@@ -146,6 +152,46 @@ func updateInstanceStatus(ctx context.Context, dockerClient *docker.Client, inst
 	// Get resource usage if running
 	if instance.Status == types.StatusRunning {
 		updateResourceUsage(ctx, dockerClient, instance, &containerInfo)
+	}
+}
+
+// updateMultiContainerStatus updates status for multi-container services
+func updateMultiContainerStatus(ctx context.Context, dockerClient *docker.Client, instance *types.Instance) {
+	runningCount := 0
+	stoppedCount := 0
+	failedCount := 0
+
+	for i := range instance.Containers {
+		container := &instance.Containers[i]
+
+		containerInfo, err := dockerClient.ContainerInspect(container.ContainerID)
+		if err != nil {
+			container.Status = "unknown"
+			continue
+		}
+
+		if containerInfo.State.Running {
+			container.Status = "running"
+			runningCount++
+		} else if containerInfo.State.Dead || containerInfo.State.OOMKilled {
+			container.Status = "failed"
+			failedCount++
+		} else {
+			container.Status = "stopped"
+			stoppedCount++
+		}
+	}
+
+	// Determine overall status
+	if failedCount > 0 {
+		instance.Status = types.StatusFailed
+	} else if runningCount == len(instance.Containers) {
+		instance.Status = types.StatusRunning
+	} else if stoppedCount == len(instance.Containers) {
+		instance.Status = types.StatusStopped
+	} else {
+		// Partially running
+		instance.Status = types.StatusRunning
 	}
 }
 
@@ -203,9 +249,25 @@ func displayInstance(instance *types.Instance, protocol, domain string, verbose 
 	}
 	fmt.Println()
 
+	// Multi-container info
+	if instance.IsMultiContainer {
+		fmt.Printf("  Type: Multi-container (%d containers)\n", len(instance.Containers))
+		if verbose {
+			for _, container := range instance.Containers {
+				statusSymbol := getContainerStatusSymbol(container.Status)
+				fmt.Printf("    %s %s\n", statusSymbol, container.Name)
+			}
+		}
+	}
+
 	// URL (if Traefik enabled)
 	if instance.Traefik.Enabled && instance.URL != "" {
 		fmt.Printf("  URL: %s\n", color.GreenString(instance.URL))
+	}
+
+	// Show dependencies if any
+	if verbose && len(instance.Dependencies) > 0 {
+		fmt.Printf("  Dependencies: %s\n", strings.Join(instance.Dependencies, ", "))
 	}
 
 	// Connection string (if available)
@@ -294,5 +356,18 @@ func formatTime(t time.Time) string {
 	} else {
 		days := int(duration.Hours() / 24)
 		return fmt.Sprintf("%d day(s) ago", days)
+	}
+}
+
+func getContainerStatusSymbol(status string) string {
+	switch status {
+	case "running":
+		return color.GreenString("●")
+	case "stopped":
+		return color.YellowString("○")
+	case "failed":
+		return color.RedString("✗")
+	default:
+		return color.New(color.Faint).Sprint("?")
 	}
 }
