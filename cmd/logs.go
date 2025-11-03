@@ -141,5 +141,14 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Show monitoring hint (only if not following and monitoring is enabled)
+	if !logsFollow {
+		cfg, _ := cfgMgr.Get()
+		if cfg.Monitoring.Enabled && cfg.Monitoring.Tool != "none" {
+			fmt.Println()
+			color.New(color.Faint).Println("💡 Tip: View all service logs and metrics in one place with 'doku monitor'")
+		}
+	}
+
 	return nil
 }

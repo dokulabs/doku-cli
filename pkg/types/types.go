@@ -158,6 +158,7 @@ type Config struct {
 	Network      NetworkGlobalConfig
 	Traefik      TraefikGlobalConfig
 	Certificates CertificatesConfig
+	Monitoring   MonitoringConfig
 	Instances    map[string]*Instance
 	Projects     map[string]*Project
 }
@@ -193,4 +194,14 @@ type CertificatesConfig struct {
 	CACert   string
 	CAKey    string
 	CertsDir string
+}
+
+// MonitoringConfig holds monitoring configuration
+type MonitoringConfig struct {
+	Tool        string    `json:"tool" yaml:"tool"`               // "signoz", "sentry", "none"
+	Enabled     bool      `json:"enabled" yaml:"enabled"`         // Whether monitoring is enabled
+	URL         string    `json:"url" yaml:"url"`                 // Dashboard URL
+	DSN         string    `json:"dsn" yaml:"dsn"`                 // Endpoint (OTLP for SignOz, DSN for Sentry)
+	APIKey      string    `json:"api_key" yaml:"api_key"`         // API key if needed
+	InstallTime time.Time `json:"install_time" yaml:"install_time"` // When monitoring was installed
 }

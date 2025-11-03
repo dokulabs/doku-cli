@@ -253,6 +253,14 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Admin: %s (port %d)\n", adminURL, spec.AdminPort)
 	}
 
+	// Show monitoring status
+	monitoringCfg, _ := cfgMgr.GetMonitoringConfig()
+	if monitoringCfg != nil && monitoringCfg.Enabled && monitoringCfg.Tool != "none" {
+		fmt.Println()
+		color.New(color.FgGreen, color.Faint).Printf("✓ Monitoring: Sending data to %s\n", getMonitoringToolName(monitoringCfg.Tool))
+		color.New(color.Faint).Printf("  Dashboard: %s\n", monitoringCfg.URL)
+	}
+
 	fmt.Println()
 
 	// Show useful commands
@@ -314,4 +322,16 @@ func promptForOption(opt types.ConfigOption) (string, error) {
 	}
 
 	return value, nil
+}
+
+// getMonitoringToolName returns the display name for a monitoring tool
+func getMonitoringToolName(tool string) string {
+	switch tool {
+	case "signoz":
+		return "SignOz"
+	case "sentry":
+		return "Sentry"
+	default:
+		return tool
+	}
 }

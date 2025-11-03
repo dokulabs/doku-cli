@@ -352,6 +352,14 @@ func (m *Manager) getDefaultConfig() *types.Config {
 			CAKey:    filepath.Join(m.GetCertsDir(), "rootCA-key.pem"),
 			CertsDir: m.GetCertsDir(),
 		},
+		Monitoring: types.MonitoringConfig{
+			Tool:        "none",
+			Enabled:     false,
+			URL:         "",
+			DSN:         "",
+			APIKey:      "",
+			InstallTime: time.Time{},
+		},
 		Instances: make(map[string]*types.Instance),
 		Projects:  make(map[string]*types.Project),
 	}
@@ -388,4 +396,55 @@ func (m *Manager) GetProtocol() (string, error) {
 		return "", err
 	}
 	return config.Preferences.Protocol, nil
+}
+
+// SetMonitoringTool sets the monitoring tool preference
+func (m *Manager) SetMonitoringTool(tool string) error {
+	validTools := map[string]bool{"signoz": true, "sentry": true, "none": true}
+	if !validTools[tool] {
+		return fmt.Errorf("invalid monitoring tool: %s (must be 'signoz', 'sentry', or 'none')", tool)
+	}
+
+	return m.Update(func(c *types.Config) error {
+		c.Monitoring.Tool = tool
+		c.Monitoring.Enabled = (tool != "none")
+		return nil
+	})
+}
+
+// SetMonitoringURL sets the monitoring dashboard URL
+func (m *Manager) SetMonitoringURL(url string) error {
+	return m.Update(func(c *types.Config) error {
+		c.Monitoring.URL = url
+		return nil
+	})
+}
+
+// SetMonitoringDSN sets the monitoring DSN/endpoint
+func (m *Manager) SetMonitoringDSN(dsn string) error {
+	return m.Update(func(c *types.Config) error {
+		c.Monitoring.DSN = dsn
+		return nil
+	})
+}
+
+// ConfigureMonitoring sets up monitoring with all required fields
+func (m *Manager) ConfigureMonitoring(tool, url, dsn string) error {
+	return m.Update(func(c *types.Config) error {
+		c.Monitoring.Tool = tool
+		c.Monitoring.Enabled = (tool != "none")
+		c.Monitoring.URL = url
+		c.Monitoring.DSN = dsn
+		c.Monitoring.InstallTime = time.Now()
+		return nil
+	})
+}
+
+// GetMonitoringConfig returns the monitoring configuration
+func (m *Manager) GetMonitoringConfig() (*types.MonitoringConfig, error) {
+	config, err := m.Get()
+	if err != nil {
+		return nil, err
+	}
+	return &config.Monitoring, nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/monitoring"
 	"github.com/dokulabs/doku-cli/pkg/types"
 )
 
@@ -102,6 +103,13 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 	// Merge environment variables
 	env := i.mergeEnvironment(spec.Environment, opts.Environment)
 
+	// Add monitoring instrumentation environment variables
+	cfg, _ := i.configMgr.Get()
+	if cfg.Monitoring.Enabled && cfg.Monitoring.Tool != "none" {
+		monitoringEnv := monitoring.GetInstrumentationEnv(instanceName, &cfg.Monitoring)
+		env = i.mergeEnvironment(env, monitoringEnv)
+	}
+
 	// Determine resource limits
 	memoryLimit := opts.MemoryLimit
 	if memoryLimit == "" && spec.Resources != nil {
@@ -134,7 +142,8 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		RestartPolicy: dockerTypes.RestartPolicy{
 			Name: "unless-stopped",
 		},
-		Mounts: i.createMounts(instanceName, spec, opts.Volumes),
+		Mounts:    i.createMounts(instanceName, spec, opts.Volumes),
+		LogConfig: *monitoring.GetDockerLoggingConfig(&cfg.Monitoring),
 	}
 
 	// Apply resource limits
@@ -283,6 +292,15 @@ func (i *Installer) generateLabels(instanceName string, service *types.CatalogSe
 	} else if internal {
 		// Explicitly disable Traefik for internal services
 		labels["traefik.enable"] = "false"
+	}
+
+	// Add monitoring labels
+	cfg, _ := i.configMgr.Get()
+	if cfg.Monitoring.Enabled && cfg.Monitoring.Tool != "none" {
+		monitoringLabels := monitoring.GetServiceLabels(instanceName, &cfg.Monitoring)
+		for k, v := range monitoringLabels {
+			labels[k] = v
+		}
 	}
 
 	return labels
