@@ -103,13 +103,19 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	if dockerClient != nil {
 		containersRemoved := 0
 
-		// Get all containers with doku label
-		containers, err := dockerClient.ListContainersByLabel(ctx, "com.doku.managed", "true")
+		// Get all containers with name starting with "doku-"
+		allContainers, err := dockerClient.ListContainers(ctx)
 		if err != nil {
 			fmt.Printf("  %s Failed to list containers: %v\n", red("✗"), err)
 		} else {
-			for _, container := range containers {
+			for _, container := range allContainers {
 				name := strings.TrimPrefix(container.Names[0], "/")
+
+				// Only process containers with "doku-" prefix
+				if !strings.HasPrefix(name, "doku-") {
+					continue
+				}
+
 				if err := dockerClient.StopContainer(ctx, container.ID); err != nil {
 					fmt.Printf("  %s Failed to stop %s: %v\n", red("✗"), name, err)
 				} else {
@@ -125,16 +131,6 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Also try to remove the Traefik container explicitly
-		traefik := "doku-traefik"
-		if err := dockerClient.StopContainer(ctx, traefik); err == nil {
-			fmt.Printf("  %s Stopped %s\n", green("✓"), traefik)
-			if err := dockerClient.RemoveContainer(ctx, traefik); err == nil {
-				fmt.Printf("  %s Removed %s\n", green("✓"), traefik)
-				containersRemoved++
-			}
-		}
-
 		if containersRemoved > 0 {
 			cleaned = append(cleaned, fmt.Sprintf("%d Docker container(s)", containersRemoved))
 		}
@@ -143,12 +139,17 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	// Step 2: Remove Docker volumes
 	fmt.Printf("\n%s Removing Docker volumes...\n", cyan("→"))
 	if dockerClient != nil {
-		volumes, err := dockerClient.ListVolumesByLabel(ctx, "com.doku.managed", "true")
+		volumes, err := dockerClient.ListVolumes(ctx)
 		if err != nil {
 			fmt.Printf("  %s Failed to list volumes: %v\n", red("✗"), err)
 		} else {
 			volumesRemoved := 0
 			for _, volume := range volumes {
+				// Only process volumes with "doku-" prefix
+				if !strings.HasPrefix(volume.Name, "doku-") {
+					continue
+				}
+
 				if err := dockerClient.RemoveVolume(ctx, volume.Name); err != nil {
 					fmt.Printf("  %s Failed to remove volume %s: %v\n", red("✗"), volume.Name, err)
 				} else {

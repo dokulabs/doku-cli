@@ -22,19 +22,47 @@ Doku is a CLI tool that simplifies running and managing Docker-based services lo
 - 🔐 **Environment management** - Secure environment variable handling with masking
 - 📋 **Service catalog** - Curated collection of popular development services
 - 🔄 **Full lifecycle management** - Start, stop, restart, and remove services with ease
+- 🧩 **Multi-container services** - Deploy complex services with multiple containers
+- 🔗 **Dependency management** - Automatic installation of service dependencies
 
 ## Quick Start
 
 ### Installation
 
+**Quick Install (Recommended):**
+
 ```bash
-# Using Go (recommended)
+# Using curl
+curl -fsSL https://raw.githubusercontent.com/dokulabs/doku-cli/main/scripts/install.sh | bash
+
+# Or using wget
+wget -qO- https://raw.githubusercontent.com/dokulabs/doku-cli/main/scripts/install.sh | bash
+```
+
+**Using Go:**
+
+```bash
+# Install latest release
 go install github.com/dokulabs/doku-cli/cmd/doku@latest
 
-# Or install a specific version
-go install github.com/dokulabs/doku-cli/cmd/doku@v0.1.0
+# Install from main branch
+go install github.com/dokulabs/doku-cli/cmd/doku@main
 
-# Verify installation
+# Install specific version
+go install github.com/dokulabs/doku-cli/cmd/doku@v0.2.0
+```
+
+**More Options:**
+
+See [INSTALL.md](INSTALL.md) for detailed installation instructions including:
+- Installing specific versions
+- Building from source
+- Custom installation directories
+- Platform-specific instructions
+
+**Verify installation:**
+
+```bash
 doku version
 ```
 
@@ -162,6 +190,7 @@ doku catalog
 - MongoDB
 - Redis
 - MariaDB
+- ClickHouse (with Zookeeper dependency)
 
 **Message Queues:**
 - RabbitMQ
@@ -176,6 +205,10 @@ doku catalog
 **Monitoring:**
 - Prometheus
 - Grafana
+- **SigNoz** (Multi-container APM platform)
+
+**Coordination:**
+- Apache Zookeeper
 
 And many more...
 
@@ -266,6 +299,69 @@ This pattern mirrors enterprise microservices architectures where:
 - API Gateway handles authentication, authorization, and routing
 - Backend services are isolated and only accessible within the network
 - Services communicate using container names (service discovery)
+
+### Multi-Container Services
+
+Deploy complex services that require multiple containers:
+
+```bash
+# Install SigNoz (3 containers: otel-collector, query-service, frontend)
+# Automatically installs dependencies: Zookeeper and ClickHouse
+doku install signoz
+
+# List all containers
+doku list
+# Shows:
+#   ● zookeeper [running]
+#   ● clickhouse [running]
+#   ● signoz [running]
+#     - otel-collector
+#     - query-service
+#     - frontend
+
+# Access the UI
+# https://signoz.doku.local
+```
+
+Multi-container services automatically:
+- Install required dependencies in correct order
+- Configure network aliases for inter-container communication
+- Set up proper startup dependencies
+- Mount configuration files from the catalog
+
+### Dependency Management
+
+Services automatically install their dependencies:
+
+```bash
+# Installing SignOz automatically installs:
+# 1. Zookeeper (required by ClickHouse)
+# 2. ClickHouse (required by SignOz for data storage)
+# 3. SignOz (the main service with 3 containers)
+
+doku install signoz --yes
+
+# Output:
+# 📦 Dependencies required:
+#   • zookeeper (latest)
+#   • clickhouse (latest)
+#   • signoz (latest)
+#
+# Installing dependency: zookeeper...
+# ✓ zookeeper installed
+#
+# Installing dependency: clickhouse...
+# ✓ clickhouse installed
+#
+# Installing dependency: signoz...
+# ✓ signoz installed
+```
+
+Dependencies are defined in the catalog and automatically resolved:
+- Prevents circular dependencies
+- Installs in correct topological order
+- Skips already-installed dependencies
+- Configures inter-service communication
 
 ## Configuration
 
@@ -400,7 +496,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Project Status
 
-**Status:** ✅ Production Ready (v0.1.0)
+**Status:** ✅ Production Ready (v0.2.0)
 
 ### Completed Features ✅
 
@@ -419,7 +515,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 - ✅ Catalog browsing and search
 - ✅ Automatic catalog updates
 
-**Service Management (Phase 4 Complete!):**
+**Service Management:**
 - ✅ Service installation with interactive prompts
 - ✅ Service listing with filtering and status
 - ✅ Service lifecycle (start, stop, restart)
@@ -431,15 +527,31 @@ MIT License - see [LICENSE](LICENSE) for details.
 - ✅ Volume management
 - ✅ Internal-only services (API Gateway pattern)
 
+**Multi-Container & Dependencies (Phase 3 Complete!):**
+- ✅ Multi-container service support
+- ✅ Automatic dependency resolution
+- ✅ Topological sorting for installation order
+- ✅ Network alias automation for inter-container communication
+- ✅ Configuration file mounting from catalog
+- ✅ Container startup order management
+- ✅ Dependency-aware removal (keeps dependencies)
+
+**Installation & Distribution:**
+- ✅ One-line installation via curl/wget
+- ✅ Pre-built binaries for multiple platforms
+- ✅ Go install support (@latest, @main, @version)
+- ✅ Build from source option
+- ✅ Self-upgrade command
+
 **Utilities:**
 - ✅ Complete uninstallation with automatic cleanup
+- ✅ Fixed uninstall to remove all containers and volumes
 - ✅ Version information
 - ✅ Help system
 
 ### Planned Enhancements 📋
 - 📋 Service health checks and monitoring
 - 📋 Multi-project workspace support
-- 📋 Dependency management between services
 - 📋 Service templates and custom definitions
 - 📋 Environment profiles (dev/staging/prod)
 - 📋 Backup/restore functionality

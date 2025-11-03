@@ -381,6 +381,19 @@ func (c *Client) NetworkDisconnect(networkID, containerID string, force bool) er
 
 // Helper methods for filtering by labels
 
+// ListContainers lists all containers
+func (c *Client) ListContainers(ctx context.Context) ([]types.Container, error) {
+	options := container.ListOptions{
+		All: true,
+	}
+
+	containers, err := c.cli.ContainerList(ctx, options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list containers: %w", err)
+	}
+	return containers, nil
+}
+
 // ListContainersByLabel lists containers with a specific label
 func (c *Client) ListContainersByLabel(ctx context.Context, labelKey, labelValue string) ([]types.Container, error) {
 	filterArgs := filters.NewArgs()
@@ -396,6 +409,22 @@ func (c *Client) ListContainersByLabel(ctx context.Context, labelKey, labelValue
 		return nil, fmt.Errorf("failed to list containers by label: %w", err)
 	}
 	return containers, nil
+}
+
+// ListVolumes lists all volumes
+func (c *Client) ListVolumes(ctx context.Context) ([]*volume.Volume, error) {
+	options := volume.ListOptions{}
+
+	volumeList, err := c.cli.VolumeList(ctx, options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list volumes: %w", err)
+	}
+
+	volumes := make([]*volume.Volume, len(volumeList.Volumes))
+	for i, vol := range volumeList.Volumes {
+		volumes[i] = vol
+	}
+	return volumes, nil
 }
 
 // ListVolumesByLabel lists volumes with a specific label
