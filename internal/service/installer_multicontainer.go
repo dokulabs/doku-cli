@@ -54,6 +54,11 @@ func (i *Installer) resolveDependencies(opts InstallOptions) error {
 
 	// Install each dependency in order
 	for _, dep := range missing {
+		// Skip the root service itself (it will be installed by the main Install call)
+		if dep.ServiceName == opts.ServiceName {
+			continue
+		}
+
 		if !dep.IsInstalled && dep.Required {
 			fmt.Println()
 			color.Cyan("Installing dependency: %s...", dep.ServiceName)
@@ -142,11 +147,25 @@ func (i *Installer) installMultiContainer(
 			return nil, fmt.Errorf("failed to pull image %s: %w", containerSpec.Image, err)
 		}
 
+		// Determine the port for this container (for Traefik routing)
+		containerPort := 0
+		if isPrimary && len(containerSpec.Ports) > 0 {
+			// Extract the internal port from the first port mapping (e.g., "3301:3301" -> 3301)
+			portMapping := containerSpec.Ports[0]
+			if colonIdx := strings.Index(portMapping, ":"); colonIdx > 0 {
+				fmt.Sscanf(portMapping[colonIdx+1:], "%d", &containerPort)
+			}
+		}
+		// Fallback to service-level port if available
+		if containerPort == 0 && isPrimary {
+			containerPort = spec.Port
+		}
+
 		// Create container configuration
 		containerConfig := &dockerTypes.Config{
 			Image:  containerSpec.Image,
 			Env:    i.envMapToSlice(env),
-			Labels: i.generateMultiContainerLabels(instanceName, opts.ServiceName, containerSpec.Name, isPrimary, opts.Internal),
+			Labels: i.generateMultiContainerLabels(instanceName, opts.ServiceName, containerSpec.Name, isPrimary, opts.Internal, containerPort),
 		}
 
 		// Override command/entrypoint if specified
@@ -277,7 +296,7 @@ func (i *Installer) buildNetworkAliases(instanceName, containerName string, isPr
 }
 
 // generateMultiContainerLabels generates Docker labels for multi-container services
-func (i *Installer) generateMultiContainerLabels(instanceName, serviceName, containerName string, isPrimary bool, internal bool) map[string]string {
+func (i *Installer) generateMultiContainerLabels(instanceName, serviceName, containerName string, isPrimary bool, internal bool, port int) map[string]string {
 	labels := map[string]string{
 		"doku.managed":       "true",
 		"doku.service":       serviceName,
@@ -287,10 +306,10 @@ func (i *Installer) generateMultiContainerLabels(instanceName, serviceName, cont
 		"doku.multi":         "true",
 	}
 
-	if !internal && isPrimary {
+	if !internal && isPrimary && port > 0 {
 		labels["traefik.enable"] = "true"
 		labels["traefik.http.routers."+instanceName+".rule"] = fmt.Sprintf("Host(`%s.%s`)", instanceName, i.domain)
-		labels["traefik.http.services."+instanceName+".loadbalancer.server.port"] = fmt.Sprintf("%d", 0) // Will be set from spec
+		labels["traefik.http.services."+instanceName+".loadbalancer.server.port"] = fmt.Sprintf("%d", port)
 	}
 
 	return labels
