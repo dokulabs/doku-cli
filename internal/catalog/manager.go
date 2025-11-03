@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	// DefaultCatalogURL is the URL to the catalog repository releases (hierarchical format)
-	DefaultCatalogURL = "https://github.com/dokulabs/doku-catalog/releases/latest/download/catalog-v2.tar.gz"
+	// DefaultCatalogURL is the URL to download the catalog from GitHub main branch
+	// Using GitHub's automatic tarball generation for the main branch
+	DefaultCatalogURL = "https://github.com/dokulabs/doku-catalog/archive/refs/heads/main.tar.gz"
 	CatalogFileName   = "catalog.yaml"
 )
 
@@ -90,6 +91,7 @@ func (m *Manager) FetchCatalog() error {
 }
 
 // extractTarGz extracts a tar.gz archive to the specified directory
+// Strips the top-level directory from GitHub tarballs (e.g., doku-catalog-main/)
 func extractTarGz(r io.Reader, destDir string) error {
 	gzr, err := gzip.NewReader(r)
 	if err != nil {
@@ -98,6 +100,9 @@ func extractTarGz(r io.Reader, destDir string) error {
 	defer gzr.Close()
 
 	tr := tar.NewReader(gzr)
+
+	// Track the top-level directory to strip it
+	var stripPrefix string
 
 	for {
 		header, err := tr.Next()
@@ -108,12 +113,35 @@ func extractTarGz(r io.Reader, destDir string) error {
 			return fmt.Errorf("failed to read tar: %w", err)
 		}
 
+		// Detect the top-level directory on first iteration
+		if stripPrefix == "" && strings.Contains(header.Name, "/") {
+			// Extract the top-level directory name
+			// e.g., "doku-catalog-main/" or "doku-catalog-main/file.txt"
+			idx := strings.Index(header.Name, "/")
+			if idx > 0 {
+				stripPrefix = header.Name[:idx+1]
+			}
+		}
+
+		// Strip the prefix from all paths
+		name := header.Name
+		if stripPrefix != "" && strings.HasPrefix(name, stripPrefix) {
+			name = strings.TrimPrefix(name, stripPrefix)
+		}
+
+		// Skip if empty after stripping (was the root directory itself)
+		if name == "" || name == "." {
+			continue
+		}
+
 		// Construct target path
-		target := filepath.Join(destDir, header.Name)
+		target := filepath.Join(destDir, name)
 
 		// Ensure the target is within destDir (security check)
-		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) {
-			return fmt.Errorf("invalid file path in archive: %s", header.Name)
+		cleanDest := filepath.Clean(destDir)
+		cleanTarget := filepath.Clean(target)
+		if !strings.HasPrefix(cleanTarget, cleanDest) {
+			return fmt.Errorf("invalid file path in archive: %s", name)
 		}
 
 		switch header.Typeflag {

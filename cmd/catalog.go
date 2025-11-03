@@ -173,11 +173,44 @@ func runCatalogUpdate(cmd *cobra.Command, args []string) error {
 	// Create catalog manager
 	catalogMgr := catalog.NewManager(cfgMgr.GetCatalogDir())
 
+	// Check if local catalog exists
+	hasLocalCatalog := catalogMgr.CatalogExists()
+
 	fmt.Println("Updating service catalog...")
 
 	// Fetch catalog
 	if err := catalogMgr.FetchCatalog(); err != nil {
-		return fmt.Errorf("failed to update catalog: %w", err)
+		// If download fails but we have a local catalog, keep using it
+		if hasLocalCatalog {
+			color.Yellow("⚠️  Could not download latest catalog from GitHub")
+			fmt.Println()
+			color.New(color.Faint).Println("Reason: The catalog repository has no published releases yet.")
+			color.New(color.Faint).Println("This is expected during development.")
+			fmt.Println()
+			color.Cyan("✓ Using existing local catalog")
+			fmt.Println()
+
+			// Show current catalog info
+			if version, err := catalogMgr.GetCatalogVersion(); err == nil && version != "" {
+				fmt.Printf("  Current version: %s\n", version)
+			}
+
+			services, err := catalogMgr.ListServices()
+			if err == nil {
+				fmt.Printf("  Services available: %d\n", len(services))
+			}
+
+			fmt.Println()
+			color.New(color.Faint).Println("💡 Your local catalog is fully functional. You can:")
+			color.New(color.Faint).Println("   • Browse services: doku catalog list")
+			color.New(color.Faint).Println("   • Install services: doku install <service>")
+			color.New(color.Faint).Println("   • The catalog will auto-update once GitHub releases are published")
+
+			return nil
+		}
+
+		// No local catalog and download failed
+		return fmt.Errorf("failed to update catalog: %w\n\nThe catalog repository has no published releases yet.\nFor development, you can copy the catalog manually:\n  cp -r /path/to/doku-catalog/* ~/.doku/catalog/", err)
 	}
 
 	// Validate catalog
