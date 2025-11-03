@@ -207,9 +207,9 @@ else
 
     if command -v curl &> /dev/null; then
         if ! curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/doku.tar.gz" 2>/dev/null; then
-            # Try without .tar.gz extension
+            # Try without .tar.gz extension (direct binary download)
             DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET_NAME}"
-            if ! curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/doku" 2>/dev/null; then
+            if ! curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/$BINARY_NAME" 2>/dev/null; then
                 echo -e "${RED}✗ Failed to download binary${NC}"
                 echo -e "${YELLOW}Build asset may not exist for this platform/version${NC}"
                 echo ""
@@ -217,14 +217,19 @@ else
                 echo "  ${CYAN}$0 --source${NC}"
                 exit 1
             fi
-            cp "$TMP_DIR/doku" "$TMP_DIR/$BINARY_NAME"
         else
+            # Extract tar.gz
             tar -xzf "$TMP_DIR/doku.tar.gz" -C "$TMP_DIR"
+            # Rename if needed (for Windows)
+            if [ "$BINARY_NAME" != "doku" ] && [ -f "$TMP_DIR/doku" ]; then
+                mv "$TMP_DIR/doku" "$TMP_DIR/$BINARY_NAME"
+            fi
         fi
     else
         if ! wget -qO "$TMP_DIR/doku.tar.gz" "$DOWNLOAD_URL" 2>/dev/null; then
+            # Try without .tar.gz extension (direct binary download)
             DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET_NAME}"
-            if ! wget -qO "$TMP_DIR/doku" "$DOWNLOAD_URL" 2>/dev/null; then
+            if ! wget -qO "$TMP_DIR/$BINARY_NAME" "$DOWNLOAD_URL" 2>/dev/null; then
                 echo -e "${RED}✗ Failed to download binary${NC}"
                 echo -e "${YELLOW}Build asset may not exist for this platform/version${NC}"
                 echo ""
@@ -232,9 +237,13 @@ else
                 echo "  ${CYAN}$0 --source${NC}"
                 exit 1
             fi
-            cp "$TMP_DIR/doku" "$TMP_DIR/$BINARY_NAME"
         else
+            # Extract tar.gz
             tar -xzf "$TMP_DIR/doku.tar.gz" -C "$TMP_DIR"
+            # Rename if needed (for Windows)
+            if [ "$BINARY_NAME" != "doku" ] && [ -f "$TMP_DIR/doku" ]; then
+                mv "$TMP_DIR/doku" "$TMP_DIR/$BINARY_NAME"
+            fi
         fi
     fi
 
