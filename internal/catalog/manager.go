@@ -361,12 +361,35 @@ func (m *Manager) ValidateCatalog() error {
 
 		// Validate each version
 		for version, spec := range service.Versions {
-			if spec.Image == "" {
-				return fmt.Errorf("service '%s' version '%s' has no image", name, version)
-			}
+			// Multi-container services have images defined per container
+			if !spec.IsMultiContainer() {
+				if spec.Image == "" {
+					return fmt.Errorf("service '%s' version '%s' has no image", name, version)
+				}
 
-			if spec.Port == 0 {
-				return fmt.Errorf("service '%s' version '%s' has no port", name, version)
+				if spec.Port == 0 {
+					return fmt.Errorf("service '%s' version '%s' has no port", name, version)
+				}
+			} else {
+				// Validate multi-container services
+				if len(spec.Containers) == 0 {
+					return fmt.Errorf("multi-container service '%s' version '%s' has no containers", name, version)
+				}
+
+				// Validate each container
+				for _, container := range spec.Containers {
+					if container.Name == "" {
+						return fmt.Errorf("multi-container service '%s' version '%s' has container with no name", name, version)
+					}
+					if container.Image == "" {
+						return fmt.Errorf("multi-container service '%s' version '%s' container '%s' has no image", name, version, container.Name)
+					}
+				}
+
+				// Ensure at least one primary container
+				if spec.GetPrimaryContainer() == nil {
+					return fmt.Errorf("multi-container service '%s' version '%s' has no primary container", name, version)
+				}
 			}
 		}
 	}
