@@ -120,10 +120,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Step 2.5: Monitoring tool selection
 	fmt.Println()
-	color.New(color.Bold, color.FgMagenta).Println("📊 Monitoring & Observability")
+	color.New(color.Bold, color.FgMagenta).Println("📊 Log Monitoring")
 	fmt.Println()
-	color.New(color.Faint).Println("Doku can automatically configure monitoring for all your services.")
-	color.New(color.Faint).Println("View logs, traces, and metrics in one unified dashboard.")
+	color.New(color.Faint).Println("Doku can install a log viewer for all your Docker containers.")
+	color.New(color.Faint).Println("View real-time logs from all services in one simple web interface.")
 	fmt.Println()
 
 	monitoringChoice := ""
@@ -149,10 +149,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	if monitoringTool != "none" {
-		printSuccess(fmt.Sprintf("Monitoring tool: %s", monitoringTool))
-		color.New(color.Faint).Println("  → All services will automatically send data to " + monitoringTool)
+		printSuccess(fmt.Sprintf("Log viewer: %s", monitoringTool))
+		color.New(color.Faint).Println("  → Dozzle will provide access to logs from all containers")
 	} else {
-		color.New(color.Faint).Println("  → Skipping monitoring setup (you can set it up later)")
+		color.New(color.Faint).Println("  → Skipping log viewer setup (you can set it up later)")
 	}
 
 	// Step 3: Initialize configuration
@@ -470,7 +470,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if monitoringTool != "none" {
 		monitoringCfg, _ := cfgMgr.GetMonitoringConfig()
 		if monitoringCfg != nil && monitoringCfg.Enabled {
-			color.Green(fmt.Sprintf("✓ Monitoring: %s configured", getMonitoringDisplayName(monitoringTool)))
+			color.Green(fmt.Sprintf("✓ Log Viewer: %s configured", getMonitoringDisplayName(monitoringTool)))
 		}
 	}
 
@@ -487,7 +487,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	color.Green(fmt.Sprintf("All services will be accessible at: %s://<service>.%s", initProtocol, initDomain))
 	if monitoringTool != "none" {
-		color.New(color.Faint).Println(fmt.Sprintf("→ All services will automatically send logs to %s", getMonitoringDisplayName(monitoringTool)))
+		color.New(color.Faint).Println(fmt.Sprintf("→ View all container logs at: %s", getMonitoringURL(cfgMgr, monitoringTool, initProtocol, initDomain)))
 	}
 
 	return nil
