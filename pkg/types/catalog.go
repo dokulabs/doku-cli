@@ -34,7 +34,8 @@ type ServiceSpec struct {
 	Configuration *ServiceConfiguration `toml:"configuration" yaml:"configuration"` // Configuration options
 
 	// Multi-container support (new)
-	Containers []ContainerSpec `toml:"containers" yaml:"containers"` // Multiple containers for this service
+	Containers     []ContainerSpec `toml:"containers" yaml:"containers"`           // Multiple containers for this service
+	InitContainers []InitContainer `toml:"init_containers" yaml:"init_containers"` // Init containers that run once before service starts
 
 	// Dependency management (enhanced)
 	Dependencies []DependencySpec `toml:"dependencies" yaml:"dependencies"` // Service dependencies with configuration
@@ -53,6 +54,16 @@ type ContainerSpec struct {
 	Resources   *ResourceRequirements `toml:"resources" yaml:"resources"`     // Container resource limits
 	Command     []string              `toml:"command" yaml:"command"`         // Custom command override
 	Entrypoint  []string              `toml:"entrypoint" yaml:"entrypoint"`   // Custom entrypoint override
+}
+
+// InitContainer defines a container that runs once before the service starts
+// Useful for migrations, setup scripts, etc.
+type InitContainer struct {
+	Name        string            `toml:"name" yaml:"name"`               // Init container name (e.g., "migrator-sync")
+	Image       string            `toml:"image" yaml:"image"`             // Docker image with tag
+	Command     []string          `toml:"command" yaml:"command"`         // Command to run
+	Environment map[string]string `toml:"environment" yaml:"environment"` // Environment variables
+	DependsOn   []string          `toml:"depends_on" yaml:"depends_on"`   // Dependencies (must complete before this runs)
 }
 
 // DependencySpec defines a service dependency with configuration

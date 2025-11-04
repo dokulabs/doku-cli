@@ -11,6 +11,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	networkTypes "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 )
@@ -68,7 +69,7 @@ func (c *Client) IsDockerAvailable() bool {
 // Container Operations
 
 // ContainerCreate creates a new container
-func (c *Client) ContainerCreate(config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, containerName string) (string, error) {
+func (c *Client) ContainerCreate(config *container.Config, hostConfig *container.HostConfig, networkingConfig *networkTypes.NetworkingConfig, containerName string) (string, error) {
 	resp, err := c.cli.ContainerCreate(c.ctx, config, hostConfig, networkingConfig, nil, containerName)
 	if err != nil {
 		return "", fmt.Errorf("failed to create container: %w", err)
@@ -361,7 +362,7 @@ func (c *Client) NetworkConnect(networkID, containerID string) error {
 
 // NetworkConnectWithAliases connects a container to a network with custom aliases
 func (c *Client) NetworkConnectWithAliases(networkID, containerID string, aliases []string) error {
-	endpointSettings := &network.EndpointSettings{
+	endpointSettings := &networkTypes.EndpointSettings{
 		Aliases: aliases,
 	}
 
@@ -467,4 +468,78 @@ func (c *Client) RemoveVolume(ctx context.Context, volumeName string) error {
 // RemoveNetwork removes a network by name or ID
 func (c *Client) RemoveNetwork(ctx context.Context, networkID string) error {
 	return c.NetworkRemove(networkID)
+}
+
+// RunContainer creates and starts a container in one step (for init containers)
+func (c *Client) RunContainer(image, name string, cmd, env []string, network string, autoRemove bool) (string, error) {
+	ctx := context.Background()
+
+	// Create container config
+	config := &container.Config{
+		Image: image,
+		Cmd:   cmd,
+		Env:   env,
+	}
+
+	// Create host config
+	hostConfig := &container.HostConfig{
+		AutoRemove: autoRemove,
+	}
+
+	// Create network config
+	networkConfig := &networkTypes.NetworkingConfig{}
+	if network != "" {
+		networkConfig.EndpointsConfig = map[string]*networkTypes.EndpointSettings{
+			network: {},
+		}
+	}
+
+	// Create container
+	resp, err := c.cli.ContainerCreate(ctx, config, hostConfig, networkConfig, nil, name)
+	if err != nil {
+		return "", fmt.Errorf("failed to create container: %w", err)
+	}
+
+	// Start container
+	if err := c.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		return "", fmt.Errorf("failed to start container: %w", err)
+	}
+
+	return resp.ID, nil
+}
+
+// WaitForContainer waits for a container to complete
+func (c *Client) WaitForContainer(containerID string) error {
+	ctx := context.Background()
+
+	// Wait for container to finish
+	statusCh, errCh := c.cli.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("error waiting for container: %w", err)
+		}
+	case status := <-statusCh:
+		if status.StatusCode != 0 {
+			return fmt.Errorf("container exited with status code %d", status.StatusCode)
+		}
+	}
+
+	return nil
+}
+
+// GetContainerLogsString gets logs from a container as a string
+func (c *Client) GetContainerLogsString(containerID string) (string, error) {
+	logs, err := c.ContainerLogs(containerID, false)
+	if err != nil {
+		return "", err
+	}
+	defer logs.Close()
+
+	data, err := io.ReadAll(logs)
+	if err != nil {
+		return "", fmt.Errorf("failed to read logs: %w", err)
+	}
+
+	return string(data), nil
 }

@@ -118,6 +118,13 @@ func (i *Installer) installMultiContainer(
 		return nil, fmt.Errorf("no primary container defined")
 	}
 
+	// Run init containers (migrations, setup scripts, etc.)
+	if len(spec.InitContainers) > 0 {
+		if err := i.runInitContainers(spec, instanceName); err != nil {
+			return nil, fmt.Errorf("failed to run init containers: %w", err)
+		}
+	}
+
 	// Install each container
 	for idx, containerSpec := range spec.Containers {
 		isPrimary := (primaryContainer != nil && containerSpec.Name == primaryContainer.Name)
@@ -455,6 +462,123 @@ func topologicalSortContainers(graph map[string][]string, containers []types.Con
 
 	// Visit all containers
 	for _, container := range containers {
+		if !visited[container.Name] {
+			if err := visit(container.Name); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// runInitContainers runs init containers in dependency order
+// Init containers run once to completion (e.g., migrations, setup scripts)
+func (i *Installer) runInitContainers(spec *types.ServiceSpec, instanceName string) error {
+	fmt.Println()
+	color.Cyan("Running init containers...")
+	fmt.Println()
+
+	// Sort init containers by dependencies
+	sorted, err := i.sortInitContainers(spec.InitContainers)
+	if err != nil {
+		return err
+	}
+
+	// Run each init container in order
+	for _, initContainer := range sorted {
+		fmt.Printf("Running %s...\n", initContainer.Name)
+
+		// Prepare command
+		cmd := initContainer.Command
+		if len(cmd) == 0 {
+			return fmt.Errorf("init container %s has no command", initContainer.Name)
+		}
+
+		// Prepare environment
+		env := make([]string, 0, len(initContainer.Environment))
+		for k, v := range initContainer.Environment {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+
+		// Run container with --rm flag (auto-remove after completion)
+		containerName := fmt.Sprintf("doku-%s-init-%s", instanceName, initContainer.Name)
+
+		// Pull image first
+		if err := i.dockerClient.ImagePull(initContainer.Image); err != nil {
+			return fmt.Errorf("failed to pull init container image %s: %w", initContainer.Image, err)
+		}
+
+		// Create and start the container
+		containerID, err := i.dockerClient.RunContainer(
+			initContainer.Image,
+			containerName,
+			cmd,
+			env,
+			"doku-network",
+			true, // auto-remove after completion
+		)
+		if err != nil {
+			return fmt.Errorf("failed to run init container %s: %w", initContainer.Name, err)
+		}
+
+		// Wait for container to complete
+		if err := i.dockerClient.WaitForContainer(containerID); err != nil {
+			// Get logs for debugging
+			logs, _ := i.dockerClient.GetContainerLogsString(containerID)
+			return fmt.Errorf("init container %s failed: %w\nLogs:\n%s", initContainer.Name, err, logs)
+		}
+
+		color.Green("✓ %s completed", initContainer.Name)
+	}
+
+	fmt.Println()
+	return nil
+}
+
+// sortInitContainers sorts init containers by dependencies
+func (i *Installer) sortInitContainers(initContainers []types.InitContainer) ([]types.InitContainer, error) {
+	// Build dependency graph
+	graph := make(map[string][]string)
+	containerMap := make(map[string]types.InitContainer)
+
+	for _, container := range initContainers {
+		graph[container.Name] = container.DependsOn
+		containerMap[container.Name] = container
+	}
+
+	// Topological sort
+	var result []types.InitContainer
+	visited := make(map[string]bool)
+	visiting := make(map[string]bool)
+
+	var visit func(string) error
+	visit = func(name string) error {
+		if visiting[name] {
+			return fmt.Errorf("circular dependency detected in init containers: %s", name)
+		}
+		if visited[name] {
+			return nil
+		}
+
+		visiting[name] = true
+
+		// Visit dependencies first
+		for _, dep := range graph[name] {
+			if err := visit(dep); err != nil {
+				return err
+			}
+		}
+
+		visiting[name] = false
+		visited[name] = true
+		result = append(result, containerMap[name])
+
+		return nil
+	}
+
+	// Visit all containers
+	for _, container := range initContainers {
 		if !visited[container.Name] {
 			if err := visit(container.Name); err != nil {
 				return nil, err
