@@ -11,6 +11,7 @@ import (
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/internal/monitoring"
 	"github.com/dokulabs/doku-cli/pkg/types"
+	"github.com/fatih/color"
 )
 
 // Installer handles service installation
@@ -64,6 +65,7 @@ type InstallOptions struct {
 	SkipDependencies bool // If true, skip dependency resolution
 	AutoInstallDeps  bool // If true, auto-install dependencies without prompting
 	IsDepend         bool // Internal: true if this is being installed as a dependency
+	Replace          bool // If true, replace existing instance without prompting
 }
 
 // Install installs a service from the catalog
@@ -107,9 +109,45 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		}
 	}
 
-	// Validate instance name doesn't exist
+	// Check if instance already exists
 	if i.configMgr.HasInstance(instanceName) {
-		return nil, fmt.Errorf("instance '%s' already exists", instanceName)
+		// If this is a dependency installation, fail immediately (don't prompt)
+		if opts.IsDepend {
+			return nil, fmt.Errorf("instance '%s' already exists", instanceName)
+		}
+
+		// If Replace flag is set, remove existing instance
+		if !opts.Replace {
+			// Prompt user to confirm replacement
+			fmt.Println()
+			color.Yellow("⚠️  Instance '%s' already exists", instanceName)
+			fmt.Println()
+			fmt.Printf("Do you want to remove and reinstall it? This will:\n")
+			fmt.Printf("  • Remove the existing '%s' instance\n", instanceName)
+			fmt.Printf("  • Keep dependencies (zookeeper, clickhouse, etc.)\n")
+			fmt.Printf("  • Install a fresh instance\n")
+			fmt.Println()
+			fmt.Print("Remove and reinstall? (y/N): ")
+
+			var response string
+			fmt.Scanln(&response)
+			response = strings.ToLower(strings.TrimSpace(response))
+
+			if response != "y" && response != "yes" {
+				return nil, fmt.Errorf("installation cancelled: instance '%s' already exists", instanceName)
+			}
+
+			opts.Replace = true
+		}
+
+		// Remove existing instance
+		color.Cyan("Removing existing instance '%s'...", instanceName)
+		mgr := NewManager(i.dockerClient, i.configMgr)
+		if err := mgr.Remove(instanceName, false); err != nil {
+			return nil, fmt.Errorf("failed to remove existing instance: %w", err)
+		}
+		color.Green("✓ Existing instance removed")
+		fmt.Println()
 	}
 
 	// Step 2: Check if multi-container service (Phase 3)

@@ -316,7 +316,13 @@ func (i *Installer) generateMultiContainerLabels(instanceName, serviceName, cont
 	if !internal && isPrimary && port > 0 {
 		labels["traefik.enable"] = "true"
 		labels["traefik.http.routers."+instanceName+".rule"] = fmt.Sprintf("Host(`%s.%s`)", instanceName, i.domain)
+		labels["traefik.http.routers."+instanceName+".entrypoints"] = "web,websecure"
 		labels["traefik.http.services."+instanceName+".loadbalancer.server.port"] = fmt.Sprintf("%d", port)
+
+		// Enable TLS if using HTTPS protocol
+		if i.protocol == "https" {
+			labels["traefik.http.routers."+instanceName+".tls"] = "true"
+		}
 	}
 
 	return labels

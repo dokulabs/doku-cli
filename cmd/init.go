@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -132,12 +130,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	monitoringPrompt := &survey.Select{
 		Message: "Choose monitoring tool:",
 		Options: []string{
-			"SignOz (Recommended) - Full observability (logs, traces, metrics)",
-			"Sentry - Error tracking & performance monitoring",
+			"Dozzle (Recommended) - Real-time Docker log viewer with web UI",
 			"None - Skip monitoring setup",
 		},
-		Default: "SignOz (Recommended) - Full observability (logs, traces, metrics)",
-		Help:    "SignOz is lightweight and provides comprehensive monitoring. Sentry focuses on error tracking.",
+		Default: "Dozzle (Recommended) - Real-time Docker log viewer with web UI",
+		Help:    "Dozzle is a lightweight log viewer that provides real-time access to all container logs through a simple web interface.",
 	}
 	survey.AskOne(monitoringPrompt, &monitoringChoice)
 
@@ -145,10 +142,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	var monitoringTool string
 	if monitoringChoice == "" || monitoringChoice == "None - Skip monitoring setup" {
 		monitoringTool = "none"
-	} else if strings.Contains(monitoringChoice, "SignOz") {
-		monitoringTool = "signoz"
-	} else if strings.Contains(monitoringChoice, "Sentry") {
-		monitoringTool = "sentry"
+	} else if strings.Contains(monitoringChoice, "Dozzle") {
+		monitoringTool = "dozzle"
 	} else {
 		monitoringTool = "none"
 	}
@@ -528,10 +523,8 @@ func repeat(s string, count int) string {
 // getMonitoringDisplayName returns the display name for a monitoring tool
 func getMonitoringDisplayName(tool string) string {
 	switch tool {
-	case "signoz":
-		return "SignOz"
-	case "sentry":
-		return "Sentry"
+	case "dozzle":
+		return "Dozzle"
 	default:
 		return tool
 	}
@@ -545,15 +538,6 @@ func getMonitoringURL(cfgMgr *config.Manager, tool, protocol, domain string) str
 
 // installMonitoringTool installs the selected monitoring tool
 func installMonitoringTool(dockerClient *docker.Client, cfgMgr *config.Manager, catalogMgr *catalog.Manager, tool, protocol, domain string) error {
-	// Tool-specific pre-installation checks and dependency installation
-	switch tool {
-	case "sentry":
-		// Sentry requires PostgreSQL and Redis
-		if err := installSentryDependencies(dockerClient, cfgMgr, catalogMgr); err != nil {
-			return fmt.Errorf("failed to install Sentry dependencies: %w", err)
-		}
-	}
-
 	// Create service installer
 	installer, err := service.NewInstaller(dockerClient, cfgMgr, catalogMgr)
 	if err != nil {
@@ -570,16 +554,6 @@ func installMonitoringTool(dockerClient *docker.Client, cfgMgr *config.Manager, 
 		Internal:     false, // Expose via Traefik
 	}
 
-	// Tool-specific environment configuration
-	switch tool {
-	case "sentry":
-		// Configure Sentry to use our PostgreSQL and Redis
-		opts.Environment["SENTRY_POSTGRES_HOST"] = "postgres"
-		opts.Environment["SENTRY_REDIS_HOST"] = "redis"
-		opts.Environment["SENTRY_SECRET_KEY"] = generateSentrySecretKey()
-		opts.Environment["SENTRY_SINGLE_ORGANIZATION"] = "true"
-	}
-
 	// Install the monitoring tool
 	fmt.Println("  Installing", getMonitoringDisplayName(tool), "...")
 	instance, err := installer.Install(opts)
@@ -589,58 +563,29 @@ func installMonitoringTool(dockerClient *docker.Client, cfgMgr *config.Manager, 
 
 	// Wait for service to be ready
 	fmt.Println("  Waiting for service to be ready...")
-	time.Sleep(5 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	// Configure monitoring in the config
 	monitoringURL := fmt.Sprintf("%s://%s.%s", protocol, tool, domain)
-	var dsn string
 
 	switch tool {
-	case "signoz":
-		// SignOz OTLP endpoint (internal Docker network)
-		dsn = fmt.Sprintf("http://%s:4318", tool)
-
-		// Save configuration immediately
-		if err := cfgMgr.ConfigureMonitoring(tool, monitoringURL, dsn); err != nil {
+	case "dozzle":
+		// Dozzle doesn't need DSN, it reads from Docker socket
+		if err := cfgMgr.ConfigureMonitoring(tool, monitoringURL, ""); err != nil {
 			return fmt.Errorf("failed to save monitoring config: %w", err)
 		}
 
 		// Show success message
 		fmt.Println()
-		color.Green("✓ SignOz installed and configured")
+		color.Green("✓ Dozzle installed and configured")
 		fmt.Println()
-		color.Cyan("SignOz Dashboard:")
+		color.Cyan("Dozzle Dashboard:")
 		fmt.Println("  URL:", monitoringURL)
 		fmt.Println()
-		color.Cyan("OpenTelemetry Configuration:")
-		fmt.Println("  OTLP Endpoint:", dsn)
-		fmt.Println("  Protocol: HTTP/Protobuf")
-		fmt.Println()
-		color.New(color.Faint).Println("All services installed after this will automatically send:")
-		color.New(color.Faint).Println("  • Logs - Application and system logs")
-		color.New(color.Faint).Println("  • Traces - Request flows and dependencies")
-		color.New(color.Faint).Println("  • Metrics - Performance and resource usage")
-
-	case "sentry":
-		// For Sentry, we need user to configure DSN after first login
-		// Save initial config without DSN
-		if err := cfgMgr.ConfigureMonitoring(tool, monitoringURL, ""); err != nil {
-			return fmt.Errorf("failed to save monitoring config: %w", err)
-		}
-
-		// Show setup instructions
-		fmt.Println()
-		color.Green("✓ Sentry installed successfully")
-		fmt.Println()
-		color.Cyan("Next steps to complete Sentry setup:")
-		fmt.Println()
-		fmt.Println("1. Open Sentry dashboard:", color.CyanString(monitoringURL))
-		fmt.Println("2. Create your admin account")
-		fmt.Println("3. Create a new project")
-		fmt.Println("4. Copy the DSN from project settings")
-		fmt.Println("5. Run: doku config set monitoring.dsn <your-dsn>")
-		fmt.Println()
-		color.New(color.Faint).Println("After configuring the DSN, all services will send errors and performance data to Sentry")
+		color.New(color.Faint).Println("Dozzle provides real-time access to logs from all your Docker containers.")
+		color.New(color.Faint).Println("  • View logs from multiple containers")
+		color.New(color.Faint).Println("  • Search and filter logs")
+		color.New(color.Faint).Println("  • No configuration required - works out of the box!")
 	}
 	fmt.Println()
 
@@ -648,76 +593,3 @@ func installMonitoringTool(dockerClient *docker.Client, cfgMgr *config.Manager, 
 	return nil
 }
 
-// installSentryDependencies installs PostgreSQL and Redis for Sentry
-func installSentryDependencies(dockerClient *docker.Client, cfgMgr *config.Manager, catalogMgr *catalog.Manager) error {
-	serviceMgr := service.NewManager(dockerClient, cfgMgr)
-	installer, err := service.NewInstaller(dockerClient, cfgMgr, catalogMgr)
-	if err != nil {
-		return fmt.Errorf("failed to create installer: %w", err)
-	}
-
-	// Check and install PostgreSQL
-	fmt.Println("  Checking PostgreSQL...")
-	if !cfgMgr.HasInstance("postgres") {
-		fmt.Println("  Installing PostgreSQL for Sentry...")
-		opts := service.InstallOptions{
-			ServiceName:  "postgres",
-			Version:      "latest",
-			InstanceName: "postgres",
-			Environment: map[string]string{
-				"POSTGRES_USER":     "sentry",
-				"POSTGRES_PASSWORD": "sentry",
-				"POSTGRES_DB":       "sentry",
-			},
-			Internal: true, // Internal service, no Traefik exposure
-		}
-		if _, err := installer.Install(opts); err != nil {
-			return fmt.Errorf("failed to install PostgreSQL: %w", err)
-		}
-		// Wait for PostgreSQL to be ready
-		time.Sleep(5 * time.Second)
-	} else {
-		// Check if running
-		if status, _ := serviceMgr.GetStatus("postgres"); status != "running" {
-			return fmt.Errorf("PostgreSQL is installed but not running. Run: doku start postgres")
-		}
-		fmt.Println("  ✓ PostgreSQL already installed")
-	}
-
-	// Check and install Redis
-	fmt.Println("  Checking Redis...")
-	if !cfgMgr.HasInstance("redis") {
-		fmt.Println("  Installing Redis for Sentry...")
-		opts := service.InstallOptions{
-			ServiceName:  "redis",
-			Version:      "latest",
-			InstanceName: "redis",
-			Internal:     true, // Internal service
-		}
-		if _, err := installer.Install(opts); err != nil {
-			return fmt.Errorf("failed to install Redis: %w", err)
-		}
-		// Wait for Redis to be ready
-		time.Sleep(3 * time.Second)
-	} else {
-		// Check if running
-		if status, _ := serviceMgr.GetStatus("redis"); status != "running" {
-			return fmt.Errorf("Redis is installed but not running. Run: doku start redis")
-		}
-		fmt.Println("  ✓ Redis already installed")
-	}
-
-	return nil
-}
-
-// generateSentrySecretKey generates a cryptographically secure random secret key for Sentry
-func generateSentrySecretKey() string {
-	// Generate 32 random bytes (256 bits) for strong security
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback to a timestamp-based key if crypto/rand fails (very unlikely)
-		return fmt.Sprintf("doku-sentry-key-%d", time.Now().UnixNano())
-	}
-	// Convert to hex string (64 characters)
-	return hex.EncodeToString(b)
-}

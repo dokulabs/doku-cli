@@ -173,16 +173,17 @@ func (l *HierarchicalLoader) loadVersionSpec(versionDir string) (*types.ServiceS
 	}
 
 	spec := &types.ServiceSpec{
-		Image:       config.Image,
-		Description: config.Description,
-		Port:        config.Port,
-		AdminPort:   config.AdminPort,
-		Protocol:    config.Protocol,
-		Ports:       config.Ports,
-		Volumes:     config.Volumes,
-		Command:     config.Command,
-		Environment: config.Environment,
-		Containers:  config.Containers,
+		Image:          config.Image,
+		Description:    config.Description,
+		Port:           config.Port,
+		AdminPort:      config.AdminPort,
+		Protocol:       config.Protocol,
+		Ports:          config.Ports,
+		Volumes:        config.Volumes,
+		Command:        config.Command,
+		Environment:    config.Environment,
+		Containers:     config.Containers,
+		InitContainers: config.InitContainers,
 	}
 
 	// Handle dependencies - convert old format to new format if needed
@@ -262,7 +263,8 @@ type VersionConfig struct {
 	Configuration *types.ServiceConfiguration `yaml:"configuration,omitempty"`
 
 	// Multi-container support (NEW)
-	Containers []types.ContainerSpec `yaml:"containers,omitempty"`
+	Containers     []types.ContainerSpec `yaml:"containers,omitempty"`
+	InitContainers []types.InitContainer `yaml:"init_containers,omitempty"` // NEW: Init containers
 
 	// Dependencies - support both old and new formats
 	Dependencies   []string               `yaml:"dependencies,omitempty"`    // OLD: Simple string list (for backward compatibility)
