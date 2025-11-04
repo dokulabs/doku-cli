@@ -20,47 +20,47 @@ type CatalogService struct {
 // ServiceSpec represents a specific version of a service
 type ServiceSpec struct {
 	// Single-container fields (backward compatible)
-	Image         string                `toml:"image" yaml:"image"`                   // Docker image with tag
-	Description   string                `toml:"description" yaml:"description"`       // Version-specific description
-	Port          int                   `toml:"port" yaml:"port"`                     // Main service port (exposed via Traefik)
-	AdminPort     int                   `toml:"admin_port" yaml:"admin_port"`         // Optional admin/management port
-	Protocol      string                `toml:"protocol" yaml:"protocol"`             // http, tcp, grpc, etc.
-	Ports         []string              `toml:"ports" yaml:"ports"`                   // Additional port mappings (e.g., "9000:9000")
-	Environment   map[string]string     `toml:"environment" yaml:"environment"`       // Default environment variables
-	Volumes       []string              `toml:"volumes" yaml:"volumes"`               // Volume mount paths
-	Command       []string              `toml:"command" yaml:"command"`               // Custom command
-	Healthcheck   *Healthcheck          `toml:"healthcheck" yaml:"healthcheck"`       // Health check configuration
-	Resources     *ResourceRequirements `toml:"resources" yaml:"resources"`           // CPU/memory requirements
-	Configuration *ServiceConfiguration `toml:"configuration" yaml:"configuration"`   // Configuration options
+	Image         string                `toml:"image" yaml:"image"`                 // Docker image with tag
+	Description   string                `toml:"description" yaml:"description"`     // Version-specific description
+	Port          int                   `toml:"port" yaml:"port"`                   // Main service port (exposed via Traefik)
+	AdminPort     int                   `toml:"admin_port" yaml:"admin_port"`       // Optional admin/management port
+	Protocol      string                `toml:"protocol" yaml:"protocol"`           // http, tcp, grpc, etc.
+	Ports         []string              `toml:"ports" yaml:"ports"`                 // Additional port mappings (e.g., "9000:9000")
+	Environment   map[string]string     `toml:"environment" yaml:"environment"`     // Default environment variables
+	Volumes       []string              `toml:"volumes" yaml:"volumes"`             // Volume mount paths
+	Command       []string              `toml:"command" yaml:"command"`             // Custom command
+	Healthcheck   *Healthcheck          `toml:"healthcheck" yaml:"healthcheck"`     // Health check configuration
+	Resources     *ResourceRequirements `toml:"resources" yaml:"resources"`         // CPU/memory requirements
+	Configuration *ServiceConfiguration `toml:"configuration" yaml:"configuration"` // Configuration options
 
 	// Multi-container support (new)
-	Containers    []ContainerSpec       `toml:"containers" yaml:"containers"`         // Multiple containers for this service
+	Containers []ContainerSpec `toml:"containers" yaml:"containers"` // Multiple containers for this service
 
 	// Dependency management (enhanced)
-	Dependencies  []DependencySpec      `toml:"dependencies" yaml:"dependencies"`     // Service dependencies with configuration
+	Dependencies []DependencySpec `toml:"dependencies" yaml:"dependencies"` // Service dependencies with configuration
 }
 
 // ContainerSpec defines a single container within a multi-container service
 type ContainerSpec struct {
-	Name        string                `toml:"name" yaml:"name"`                       // Container name (e.g., "frontend", "query-service")
-	Image       string                `toml:"image" yaml:"image"`                     // Docker image with tag
-	Primary     bool                  `toml:"primary" yaml:"primary"`                 // Is this the primary/main container (default: first)
-	Ports       []string              `toml:"ports" yaml:"ports"`                     // Port mappings (e.g., "3301:3301")
-	Environment map[string]string     `toml:"environment" yaml:"environment"`         // Container-specific environment variables
-	Volumes     []string              `toml:"volumes" yaml:"volumes"`                 // Volume mount paths
-	DependsOn   []string              `toml:"depends_on" yaml:"depends_on"`           // Internal (same service) or external dependencies
-	Healthcheck *Healthcheck          `toml:"healthcheck" yaml:"healthcheck"`         // Container health check
-	Resources   *ResourceRequirements `toml:"resources" yaml:"resources"`             // Container resource limits
-	Command     []string              `toml:"command" yaml:"command"`                 // Custom command override
-	Entrypoint  []string              `toml:"entrypoint" yaml:"entrypoint"`           // Custom entrypoint override
+	Name        string                `toml:"name" yaml:"name"`               // Container name (e.g., "frontend", "query-service")
+	Image       string                `toml:"image" yaml:"image"`             // Docker image with tag
+	Primary     bool                  `toml:"primary" yaml:"primary"`         // Is this the primary/main container (default: first)
+	Ports       []string              `toml:"ports" yaml:"ports"`             // Port mappings (e.g., "3301:3301")
+	Environment map[string]string     `toml:"environment" yaml:"environment"` // Container-specific environment variables
+	Volumes     []string              `toml:"volumes" yaml:"volumes"`         // Volume mount paths
+	DependsOn   []string              `toml:"depends_on" yaml:"depends_on"`   // Internal (same service) or external dependencies
+	Healthcheck *Healthcheck          `toml:"healthcheck" yaml:"healthcheck"` // Container health check
+	Resources   *ResourceRequirements `toml:"resources" yaml:"resources"`     // Container resource limits
+	Command     []string              `toml:"command" yaml:"command"`         // Custom command override
+	Entrypoint  []string              `toml:"entrypoint" yaml:"entrypoint"`   // Custom entrypoint override
 }
 
 // DependencySpec defines a service dependency with configuration
 type DependencySpec struct {
-	Name        string            `toml:"name" yaml:"name"`                       // Service name (e.g., "clickhouse")
-	Version     string            `toml:"version" yaml:"version"`                 // Version constraint (default: "latest")
-	Required    bool              `toml:"required" yaml:"required"`               // Is this dependency required (default: true)
-	Environment map[string]string `toml:"environment" yaml:"environment"`         // Override environment variables for dependency
+	Name        string            `toml:"name" yaml:"name"`               // Service name (e.g., "clickhouse")
+	Version     string            `toml:"version" yaml:"version"`         // Version constraint (default: "latest")
+	Required    bool              `toml:"required" yaml:"required"`       // Is this dependency required (default: true)
+	Environment map[string]string `toml:"environment" yaml:"environment"` // Override environment variables for dependency
 }
 
 // ServiceLinks contains useful links for a service

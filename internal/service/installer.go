@@ -51,19 +51,19 @@ func NewInstaller(dockerClient *docker.Client, configMgr *config.Manager, catalo
 
 // InstallOptions holds options for service installation
 type InstallOptions struct {
-	ServiceName       string            // Service name from catalog
-	Version           string            // Version to install (empty = latest)
-	InstanceName      string            // Custom instance name (empty = auto-generate)
-	Environment       map[string]string // Override environment variables
-	MemoryLimit       string            // Override memory limit
-	CPULimit          string            // Override CPU limit
-	Volumes           map[string]string // Volume mappings (host:container)
-	Internal          bool              // If true, don't expose via Traefik
+	ServiceName  string            // Service name from catalog
+	Version      string            // Version to install (empty = latest)
+	InstanceName string            // Custom instance name (empty = auto-generate)
+	Environment  map[string]string // Override environment variables
+	MemoryLimit  string            // Override memory limit
+	CPULimit     string            // Override CPU limit
+	Volumes      map[string]string // Volume mappings (host:container)
+	Internal     bool              // If true, don't expose via Traefik
 
 	// Dependency management (Phase 3)
-	SkipDependencies  bool              // If true, skip dependency resolution
-	AutoInstallDeps   bool              // If true, auto-install dependencies without prompting
-	IsDepend          bool              // Internal: true if this is being installed as a dependency
+	SkipDependencies bool // If true, skip dependency resolution
+	AutoInstallDeps  bool // If true, auto-install dependencies without prompting
+	IsDepend         bool // Internal: true if this is being installed as a dependency
 }
 
 // Install installs a service from the catalog

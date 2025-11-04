@@ -564,10 +564,10 @@ func installMonitoringTool(dockerClient *docker.Client, cfgMgr *config.Manager, 
 	opts := service.InstallOptions{
 		ServiceName:  tool,
 		Version:      "latest",
-		InstanceName: tool,  // Use tool name as instance name for simplicity
+		InstanceName: tool, // Use tool name as instance name for simplicity
 		Environment:  make(map[string]string),
 		Volumes:      make(map[string]string),
-		Internal:     false,  // Expose via Traefik
+		Internal:     false, // Expose via Traefik
 	}
 
 	// Tool-specific environment configuration
@@ -644,7 +644,7 @@ func installMonitoringTool(dockerClient *docker.Client, cfgMgr *config.Manager, 
 	}
 	fmt.Println()
 
-	_ = instance  // Use instance variable
+	_ = instance // Use instance variable
 	return nil
 }
 

@@ -15,15 +15,15 @@ import (
 )
 
 var (
-	installName           string
-	installEnv            []string
-	installMemory         string
-	installCPU            string
-	installVolumes        []string
-	installYes            bool
-	installInternal       bool
-	installSkipDeps       bool
-	installNoAutoInstall  bool
+	installName          string
+	installEnv           []string
+	installMemory        string
+	installCPU           string
+	installVolumes       []string
+	installYes           bool
+	installInternal      bool
+	installSkipDeps      bool
+	installNoAutoInstall bool
 )
 
 var installCmd = &cobra.Command{

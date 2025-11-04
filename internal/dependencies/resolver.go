@@ -23,19 +23,19 @@ func NewResolver(catalogMgr *catalog.Manager, configMgr *config.Manager) *Resolv
 
 // ResolutionResult contains the resolved installation order
 type ResolutionResult struct {
-	InstallOrder []DependencyNode    // Topologically sorted installation order
-	Graph        map[string][]string // Dependency graph for visualization
+	InstallOrder []DependencyNode           // Topologically sorted installation order
+	Graph        map[string][]string        // Dependency graph for visualization
 	AllNodes     map[string]*DependencyNode // All nodes in the graph
 }
 
 // DependencyNode represents a service to be installed
 type DependencyNode struct {
-	ServiceName  string            // Service name
-	Version      string            // Version to install
-	Required     bool              // Is this dependency required
-	Environment  map[string]string // Environment variable overrides
-	IsInstalled  bool              // Whether already installed
-	Depth        int               // Depth in dependency tree (0 = root)
+	ServiceName string            // Service name
+	Version     string            // Version to install
+	Required    bool              // Is this dependency required
+	Environment map[string]string // Environment variable overrides
+	IsInstalled bool              // Whether already installed
+	Depth       int               // Depth in dependency tree (0 = root)
 }
 
 // Resolve resolves dependencies for a service and returns installation order

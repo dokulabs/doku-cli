@@ -99,21 +99,21 @@ type DiscoveryConfig struct {
 
 // Instance represents an installed service instance
 type Instance struct {
-	Name             string
-	ServiceType      string
-	Version          string
-	Status           ServiceStatus
+	Name        string
+	ServiceType string
+	Version     string
+	Status      ServiceStatus
 
 	// Single-container fields (backward compatible)
-	ContainerName    string
-	ContainerID      string // Docker container ID
+	ContainerName string
+	ContainerID   string // Docker container ID
 
 	// Multi-container support (new)
 	IsMultiContainer bool            `yaml:"is_multi_container"` // Whether this is a multi-container service
 	Containers       []ContainerInfo `yaml:"containers"`         // Container information for multi-container services
 
 	// Dependencies
-	Dependencies     []string `yaml:"dependencies"` // List of service dependencies
+	Dependencies []string `yaml:"dependencies"` // List of service dependencies
 
 	URL              string
 	ConnectionString string
@@ -128,13 +128,13 @@ type Instance struct {
 
 // ContainerInfo holds information about a container in a multi-container service
 type ContainerInfo struct {
-	Name        string   `yaml:"name"`        // Container name (e.g., "frontend", "query-service")
-	ContainerID string   `yaml:"id"`          // Docker container ID
-	FullName    string   `yaml:"full_name"`   // Full container name (e.g., "doku-signoz-frontend")
-	Primary     bool     `yaml:"primary"`     // Is this the primary/main container?
-	Status      string   `yaml:"status"`      // Container status (running, stopped, etc.)
-	Ports       []string `yaml:"ports"`       // Port mappings
-	Image       string   `yaml:"image"`       // Docker image used
+	Name        string   `yaml:"name"`      // Container name (e.g., "frontend", "query-service")
+	ContainerID string   `yaml:"id"`        // Docker container ID
+	FullName    string   `yaml:"full_name"` // Full container name (e.g., "doku-signoz-frontend")
+	Primary     bool     `yaml:"primary"`   // Is this the primary/main container?
+	Status      string   `yaml:"status"`    // Container status (running, stopped, etc.)
+	Ports       []string `yaml:"ports"`     // Port mappings
+	Image       string   `yaml:"image"`     // Docker image used
 }
 
 // NetworkConfig holds network configuration for an instance
@@ -220,11 +220,11 @@ type CertificatesConfig struct {
 
 // MonitoringConfig holds monitoring configuration
 type MonitoringConfig struct {
-	Tool        string    `json:"tool" yaml:"tool"`               // "signoz", "sentry", "none"
-	Enabled     bool      `json:"enabled" yaml:"enabled"`         // Whether monitoring is enabled
-	URL         string    `json:"url" yaml:"url"`                 // Dashboard URL
-	DSN         string    `json:"dsn" yaml:"dsn"`                 // Endpoint (OTLP for SignOz, DSN for Sentry)
-	APIKey      string    `json:"api_key" yaml:"api_key"`         // API key if needed
+	Tool        string    `json:"tool" yaml:"tool"`                 // "signoz", "sentry", "none"
+	Enabled     bool      `json:"enabled" yaml:"enabled"`           // Whether monitoring is enabled
+	URL         string    `json:"url" yaml:"url"`                   // Dashboard URL
+	DSN         string    `json:"dsn" yaml:"dsn"`                   // Endpoint (OTLP for SignOz, DSN for Sentry)
+	APIKey      string    `json:"api_key" yaml:"api_key"`           // API key if needed
 	InstallTime time.Time `json:"install_time" yaml:"install_time"` // When monitoring was installed
 }
 

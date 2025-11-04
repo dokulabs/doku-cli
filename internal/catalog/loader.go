@@ -173,16 +173,16 @@ func (l *HierarchicalLoader) loadVersionSpec(versionDir string) (*types.ServiceS
 	}
 
 	spec := &types.ServiceSpec{
-		Image:         config.Image,
-		Description:   config.Description,
-		Port:          config.Port,
-		AdminPort:     config.AdminPort,
-		Protocol:      config.Protocol,
-		Ports:         config.Ports,
-		Volumes:       config.Volumes,
-		Command:       config.Command,
-		Environment:   config.Environment,
-		Containers:    config.Containers,
+		Image:       config.Image,
+		Description: config.Description,
+		Port:        config.Port,
+		AdminPort:   config.AdminPort,
+		Protocol:    config.Protocol,
+		Ports:       config.Ports,
+		Volumes:     config.Volumes,
+		Command:     config.Command,
+		Environment: config.Environment,
+		Containers:  config.Containers,
 	}
 
 	// Handle dependencies - convert old format to new format if needed
@@ -247,26 +247,26 @@ type ServiceLinks struct {
 
 // VersionConfig represents version config.yaml structure
 type VersionConfig struct {
-	Version       string                       `yaml:"version"`
-	Image         string                       `yaml:"image"`
-	Description   string                       `yaml:"description"`
-	Port          int                          `yaml:"port"`
-	AdminPort     int                          `yaml:"admin_port,omitempty"`
-	Protocol      string                       `yaml:"protocol"`
-	Ports         []string                     `yaml:"ports,omitempty"` // NEW: Additional port mappings
-	Volumes       []string                     `yaml:"volumes,omitempty"`
-	Command       []string                     `yaml:"command,omitempty"`
-	Environment   map[string]string            `yaml:"environment,omitempty"`
-	Healthcheck   *types.Healthcheck           `yaml:"healthcheck,omitempty"`
-	Resources     *types.ResourceRequirements  `yaml:"resources,omitempty"`
-	Configuration *types.ServiceConfiguration  `yaml:"configuration,omitempty"`
+	Version       string                      `yaml:"version"`
+	Image         string                      `yaml:"image"`
+	Description   string                      `yaml:"description"`
+	Port          int                         `yaml:"port"`
+	AdminPort     int                         `yaml:"admin_port,omitempty"`
+	Protocol      string                      `yaml:"protocol"`
+	Ports         []string                    `yaml:"ports,omitempty"` // NEW: Additional port mappings
+	Volumes       []string                    `yaml:"volumes,omitempty"`
+	Command       []string                    `yaml:"command,omitempty"`
+	Environment   map[string]string           `yaml:"environment,omitempty"`
+	Healthcheck   *types.Healthcheck          `yaml:"healthcheck,omitempty"`
+	Resources     *types.ResourceRequirements `yaml:"resources,omitempty"`
+	Configuration *types.ServiceConfiguration `yaml:"configuration,omitempty"`
 
 	// Multi-container support (NEW)
-	Containers        []types.ContainerSpec    `yaml:"containers,omitempty"`
+	Containers []types.ContainerSpec `yaml:"containers,omitempty"`
 
 	// Dependencies - support both old and new formats
-	Dependencies      []string                 `yaml:"dependencies,omitempty"`     // OLD: Simple string list (for backward compatibility)
-	DependenciesV2    []types.DependencySpec   `yaml:"dependencies_v2,omitempty"` // NEW: Full dependency specs
+	Dependencies   []string               `yaml:"dependencies,omitempty"`    // OLD: Simple string list (for backward compatibility)
+	DependenciesV2 []types.DependencySpec `yaml:"dependencies_v2,omitempty"` // NEW: Full dependency specs
 }
 
 // ListCategories returns all available categories

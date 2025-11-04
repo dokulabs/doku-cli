@@ -68,10 +68,10 @@ func (i *Installer) resolveDependencies(opts InstallOptions) error {
 				Version:          dep.Version,
 				InstanceName:     dep.ServiceName, // Use service name as instance name
 				Environment:      dep.Environment,
-				Internal:         true,             // Dependencies are internal by default
-				SkipDependencies: false,            // Allow nested dependencies
-				AutoInstallDeps:  true,             // Auto-install nested deps
-				IsDepend:         true,             // Mark as dependency installation
+				Internal:         true,  // Dependencies are internal by default
+				SkipDependencies: false, // Allow nested dependencies
+				AutoInstallDeps:  true,  // Auto-install nested deps
+				IsDepend:         true,  // Mark as dependency installation
 			}
 
 			if _, err := i.Install(depOpts); err != nil {
@@ -279,9 +279,9 @@ func (i *Installer) buildNetworkAliases(instanceName, containerName string, isPr
 	}
 
 	aliases := []string{
-		fmt.Sprintf("doku-%s-%s", instanceName, containerName),    // Full doku name
-		fmt.Sprintf("%s-%s", serviceName, containerName),           // Service-container name (e.g., signoz-query-service)
-		containerName,                                              // Short name (for intra-service communication)
+		fmt.Sprintf("doku-%s-%s", instanceName, containerName), // Full doku name
+		fmt.Sprintf("%s-%s", serviceName, containerName),       // Service-container name (e.g., signoz-query-service)
+		containerName, // Short name (for intra-service communication)
 	}
 
 	// Primary container gets service-level alias
@@ -298,12 +298,12 @@ func (i *Installer) buildNetworkAliases(instanceName, containerName string, isPr
 // generateMultiContainerLabels generates Docker labels for multi-container services
 func (i *Installer) generateMultiContainerLabels(instanceName, serviceName, containerName string, isPrimary bool, internal bool, port int) map[string]string {
 	labels := map[string]string{
-		"doku.managed":       "true",
-		"doku.service":       serviceName,
-		"doku.instance":      instanceName,
-		"doku.container":     containerName,
-		"doku.primary":       fmt.Sprintf("%t", isPrimary),
-		"doku.multi":         "true",
+		"doku.managed":   "true",
+		"doku.service":   serviceName,
+		"doku.instance":  instanceName,
+		"doku.container": containerName,
+		"doku.primary":   fmt.Sprintf("%t", isPrimary),
+		"doku.multi":     "true",
 	}
 
 	if !internal && isPrimary && port > 0 {

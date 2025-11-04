@@ -30,7 +30,7 @@ func getSignozEnv(serviceName string, config *types.MonitoringConfig) map[string
 	env := map[string]string{
 		// OpenTelemetry Protocol (OTLP) configuration
 		"OTEL_EXPORTER_OTLP_ENDPOINT": config.DSN,
-		"OTEL_SERVICE_NAME":            serviceName,
+		"OTEL_SERVICE_NAME":           serviceName,
 
 		// Resource attributes for better service identification
 		"OTEL_RESOURCE_ATTRIBUTES": fmt.Sprintf(
@@ -39,13 +39,13 @@ func getSignozEnv(serviceName string, config *types.MonitoringConfig) map[string
 		),
 
 		// Enable all telemetry types
-		"OTEL_TRACES_EXPORTER": "otlp",
+		"OTEL_TRACES_EXPORTER":  "otlp",
 		"OTEL_METRICS_EXPORTER": "otlp",
-		"OTEL_LOGS_EXPORTER":   "otlp",
+		"OTEL_LOGS_EXPORTER":    "otlp",
 
 		// Sampling configuration (always sample in local dev)
-		"OTEL_TRACES_SAMPLER":       "always_on",
-		"OTEL_TRACES_SAMPLER_ARG":   "1.0",
+		"OTEL_TRACES_SAMPLER":     "always_on",
+		"OTEL_TRACES_SAMPLER_ARG": "1.0",
 
 		// Protocol configuration
 		"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
@@ -72,8 +72,8 @@ func getSentryEnv(serviceName string, config *types.MonitoringConfig) map[string
 		"SENTRY_RELEASE":     serviceName,
 
 		// Performance monitoring
-		"SENTRY_TRACES_SAMPLE_RATE":       "1.0",
-		"SENTRY_PROFILES_SAMPLE_RATE":     "1.0",
+		"SENTRY_TRACES_SAMPLE_RATE":   "1.0",
+		"SENTRY_PROFILES_SAMPLE_RATE": "1.0",
 
 		// Additional context
 		"SENTRY_SERVER_NAME": serviceName,
