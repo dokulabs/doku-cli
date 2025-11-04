@@ -411,9 +411,9 @@ func (m *Manager) GetProtocol() (string, error) {
 
 // SetMonitoringTool sets the monitoring tool preference
 func (m *Manager) SetMonitoringTool(tool string) error {
-	validTools := map[string]bool{"signoz": true, "sentry": true, "none": true}
+	validTools := map[string]bool{"dozzle": true, "none": true}
 	if !validTools[tool] {
-		return fmt.Errorf("invalid monitoring tool: %s (must be 'signoz', 'sentry', or 'none')", tool)
+		return fmt.Errorf("invalid monitoring tool: %s (must be 'dozzle' or 'none')", tool)
 	}
 
 	return m.Update(func(c *types.Config) error {
