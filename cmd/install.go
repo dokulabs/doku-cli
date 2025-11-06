@@ -20,6 +20,7 @@ var (
 	installMemory        string
 	installCPU           string
 	installVolumes       []string
+	installPort          int
 	installYes           bool
 	installInternal      bool
 	installSkipDeps      bool
@@ -37,6 +38,7 @@ Examples:
   doku install redis --name cache  # Install with custom name
   doku install mysql --env MYSQL_ROOT_PASSWORD=secret
   doku install postgres --memory 2g --cpu 1.0
+  doku install postgres --port 5432  # Map container port to host port
   doku install user-service --internal  # Install as internal (no external access)`,
 	Args: cobra.ExactArgs(1),
 	RunE: runInstall,
@@ -50,6 +52,7 @@ func init() {
 	installCmd.Flags().StringVar(&installMemory, "memory", "", "Memory limit (e.g., 512m, 1g)")
 	installCmd.Flags().StringVar(&installCPU, "cpu", "", "CPU limit (e.g., 0.5, 1.0)")
 	installCmd.Flags().StringSliceVar(&installVolumes, "volume", []string{}, "Volume mounts (host:container)")
+	installCmd.Flags().IntVarP(&installPort, "port", "p", 0, "Map container port to host port (e.g., 5432)")
 	installCmd.Flags().BoolVarP(&installYes, "yes", "y", false, "Skip confirmation prompts")
 	installCmd.Flags().BoolVar(&installInternal, "internal", false, "Install as internal service (no Traefik exposure)")
 	installCmd.Flags().BoolVar(&installSkipDeps, "skip-deps", false, "Skip dependency resolution and installation")
@@ -254,6 +257,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		MemoryLimit:      installMemory,
 		CPULimit:         installCPU,
 		Volumes:          volumeMounts,
+		HostPort:         installPort,
 		Internal:         installInternal,
 		SkipDependencies: installSkipDeps,
 		AutoInstallDeps:  !installNoAutoInstall, // Invert: if --no-auto-install-deps is true, AutoInstallDeps should be false

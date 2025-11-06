@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/go-connections/nat"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/pkg/types"
@@ -117,6 +120,55 @@ func (m *Manager) Restart(instanceName string) error {
 	return m.configMgr.UpdateInstance(instanceName, instance)
 }
 
+// RestartWithPort restarts a service instance with a new host port mapping
+// This requires recreating the container since port mappings cannot be changed on existing containers
+func (m *Manager) RestartWithPort(instanceName string, newPort int) error {
+	instance, err := m.configMgr.GetInstance(instanceName)
+	if err != nil {
+		return fmt.Errorf("instance not found: %w", err)
+	}
+
+	// Multi-container services not supported yet
+	if instance.IsMultiContainer {
+		return fmt.Errorf("port mapping changes not supported for multi-container services")
+	}
+
+	// Get container info to preserve configuration
+	containerInfo, err := m.dockerClient.ContainerInspect(instance.ContainerName)
+	if err != nil {
+		return fmt.Errorf("failed to inspect container: %w", err)
+	}
+
+	// Stop the container
+	timeout := 10
+	if err := m.dockerClient.ContainerStop(instance.ContainerName, &timeout); err != nil {
+		return fmt.Errorf("failed to stop container: %w", err)
+	}
+
+	// Disconnect from network
+	networkMgr := docker.NewNetworkManager(m.dockerClient)
+	if err := networkMgr.DisconnectContainer("doku-network", instance.ContainerName, true); err != nil {
+		fmt.Printf("Warning: failed to disconnect from network: %v\n", err)
+	}
+
+	// Remove the container (but preserve volumes)
+	if err := m.dockerClient.ContainerRemove(instance.ContainerName, false); err != nil {
+		return fmt.Errorf("failed to remove container: %w", err)
+	}
+
+	// Update instance configuration with new port
+	instance.Network.HostPort = newPort
+
+	// Recreate the container with new port configuration
+	if err := m.recreateContainer(instance, &containerInfo); err != nil {
+		return fmt.Errorf("failed to recreate container: %w", err)
+	}
+
+	// Update config
+	instance.UpdatedAt = time.Now()
+	return m.configMgr.UpdateInstance(instanceName, instance)
+}
+
 // Remove removes a service instance (stops and deletes)
 func (m *Manager) Remove(instanceName string, force bool) error {
 	instance, err := m.configMgr.GetInstance(instanceName)
@@ -129,32 +181,47 @@ func (m *Manager) Remove(instanceName string, force bool) error {
 		return m.removeMultiContainerService(instance, force)
 	}
 
-	// Stop container first if running and not forcing
-	if instance.Status == types.StatusRunning && !force {
-		timeout := 10
-		if err := m.dockerClient.ContainerStop(instance.ContainerName, &timeout); err != nil {
-			return fmt.Errorf("failed to stop container: %w", err)
+	// Check if container exists
+	containerExists, err := m.dockerClient.ContainerExists(instance.ContainerName)
+	if err != nil {
+		fmt.Printf("Warning: failed to check container existence: %v\n", err)
+		// Continue anyway - we'll try to clean up what we can
+	}
+
+	if !containerExists {
+		// Container was already removed (manually or by error)
+		fmt.Printf("⚠️  Container %s does not exist (may have been removed manually)\n", instance.ContainerName)
+		fmt.Println("Cleaning up configuration and volumes...")
+	} else {
+		// Stop container first if running and not forcing
+		if instance.Status == types.StatusRunning && !force {
+			timeout := 10
+			if err := m.dockerClient.ContainerStop(instance.ContainerName, &timeout); err != nil {
+				fmt.Printf("Warning: failed to stop container: %v\n", err)
+				// Continue with removal
+			}
+		}
+
+		// Disconnect from network
+		networkMgr := docker.NewNetworkManager(m.dockerClient)
+		if err := networkMgr.DisconnectContainer("doku-network", instance.ContainerName, force); err != nil {
+			// Log error but continue
+			fmt.Printf("Warning: failed to disconnect from network: %v\n", err)
+		}
+
+		// Remove container
+		if err := m.dockerClient.ContainerRemove(instance.ContainerName, force); err != nil {
+			fmt.Printf("Warning: failed to remove container: %v\n", err)
+			// Continue to clean up config even if container removal fails
+		}
+
+		// Remove associated volumes
+		if err := m.removeVolumes(instance); err != nil {
+			fmt.Printf("Warning: failed to remove some volumes: %v\n", err)
 		}
 	}
 
-	// Disconnect from network
-	networkMgr := docker.NewNetworkManager(m.dockerClient)
-	if err := networkMgr.DisconnectContainer("doku-network", instance.ContainerName, force); err != nil {
-		// Log error but continue
-		fmt.Printf("Warning: failed to disconnect from network: %v\n", err)
-	}
-
-	// Remove container
-	if err := m.dockerClient.ContainerRemove(instance.ContainerName, force); err != nil {
-		return fmt.Errorf("failed to remove container: %w", err)
-	}
-
-	// Remove associated volumes
-	if err := m.removeVolumes(instance); err != nil {
-		fmt.Printf("Warning: failed to remove some volumes: %v\n", err)
-	}
-
-	// Remove from config
+	// Remove from config - always do this to clean up state
 	return m.configMgr.RemoveInstance(instanceName)
 }
 
@@ -434,6 +501,17 @@ func (m *Manager) removeMultiContainerService(instance *types.Instance, force bo
 	for i := len(instance.Containers) - 1; i >= 0; i-- {
 		container := &instance.Containers[i]
 
+		// Check if container exists
+		containerExists, err := m.dockerClient.ContainerExists(container.ContainerID)
+		if err != nil {
+			fmt.Printf("Warning: failed to check if container %s exists: %v\n", container.Name, err)
+		}
+
+		if !containerExists {
+			fmt.Printf("⚠️  Container %s does not exist (may have been removed manually)\n", container.Name)
+			continue
+		}
+
 		// Stop container if running and not forcing
 		if container.Status == "running" && !force {
 			timeout := 10
@@ -449,10 +527,11 @@ func (m *Manager) removeMultiContainerService(instance *types.Instance, force bo
 
 		// Remove container
 		if err := m.dockerClient.ContainerRemove(container.ContainerID, force); err != nil {
-			return fmt.Errorf("failed to remove container %s: %w", container.Name, err)
+			fmt.Printf("Warning: failed to remove container %s: %v\n", container.Name, err)
+			// Continue with other containers instead of returning error
+		} else {
+			fmt.Printf("Removed container: %s\n", container.Name)
 		}
-
-		fmt.Printf("Removed container: %s\n", container.Name)
 	}
 
 	// Remove associated volumes
@@ -460,7 +539,7 @@ func (m *Manager) removeMultiContainerService(instance *types.Instance, force bo
 		fmt.Printf("Warning: failed to remove some volumes: %v\n", err)
 	}
 
-	// Remove from config
+	// Remove from config - always do this to clean up state
 	return m.configMgr.RemoveInstance(instance.Name)
 }
 
@@ -536,6 +615,104 @@ func (m *Manager) removeMultiContainerVolumes(instance *types.Instance) error {
 		}
 	}
 
+	return nil
+}
+
+// recreateContainer recreates a container with new port configuration
+func (m *Manager) recreateContainer(instance *types.Instance, oldContainerInfo *dockerTypes.ContainerJSON) error {
+	// Import nat package for port handling
+	var portBindings nat.PortMap
+	var exposedPorts nat.PortSet
+
+	// Create port bindings if host port is specified
+	if instance.Network.HostPort > 0 {
+		portBindings = nat.PortMap{}
+		exposedPorts = nat.PortSet{}
+
+		containerPortSpec := nat.Port(fmt.Sprintf("%d/tcp", instance.Network.InternalPort))
+
+		exposedPorts[containerPortSpec] = struct{}{}
+		portBindings[containerPortSpec] = []nat.PortBinding{
+			{
+				HostIP:   "0.0.0.0",
+				HostPort: fmt.Sprintf("%d", instance.Network.HostPort),
+			},
+		}
+	}
+
+	// Create container config using preserved settings
+	containerConfig := &container.Config{
+		Image:        oldContainerInfo.Config.Image,
+		Env:          oldContainerInfo.Config.Env,
+		Labels:       oldContainerInfo.Config.Labels,
+		ExposedPorts: exposedPorts,
+	}
+
+	// Convert MountPoints to Mounts - handle volume mounts correctly
+	mounts := make([]mount.Mount, 0, len(oldContainerInfo.Mounts))
+	for _, mp := range oldContainerInfo.Mounts {
+		// For volume type mounts, use the volume name from Name field
+		// For bind type mounts, use the source path
+		source := mp.Source
+		if mp.Type == mount.TypeVolume && mp.Name != "" {
+			source = mp.Name
+		}
+
+		mounts = append(mounts, mount.Mount{
+			Type:     mp.Type,
+			Source:   source,
+			Target:   mp.Destination,
+			ReadOnly: !mp.RW,
+		})
+	}
+
+	// Create host config using preserved settings
+	hostConfig := &container.HostConfig{
+		RestartPolicy: oldContainerInfo.HostConfig.RestartPolicy,
+		Mounts:        mounts,
+		LogConfig:     oldContainerInfo.HostConfig.LogConfig,
+		PortBindings:  portBindings,
+		Resources:     oldContainerInfo.HostConfig.Resources,
+	}
+
+	// Create container
+	containerID, err := m.dockerClient.ContainerCreate(
+		containerConfig,
+		hostConfig,
+		nil,
+		instance.ContainerName,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create container: %w", err)
+	}
+
+	// Update container ID
+	instance.ContainerID = containerID
+
+	// Connect to network with aliases
+	networkMgr := docker.NewNetworkManager(m.dockerClient)
+
+	// Restore network aliases from labels
+	aliases := []string{instance.ServiceType}
+	if instance.Name != instance.ServiceType {
+		aliases = append(aliases, instance.Name)
+	}
+
+	if err := networkMgr.ConnectContainerWithAliases("doku-network", containerID, aliases); err != nil {
+		// Cleanup on failure
+		m.dockerClient.ContainerRemove(instance.ContainerName, true)
+		return fmt.Errorf("failed to connect to network: %w", err)
+	}
+
+	// Start container
+	if err := m.dockerClient.ContainerStart(containerID); err != nil {
+		// Cleanup on failure
+		networkMgr.DisconnectContainer("doku-network", instance.ContainerName, true)
+		m.dockerClient.ContainerRemove(instance.ContainerName, true)
+		return fmt.Errorf("failed to start container: %w", err)
+	}
+
+	instance.Status = types.StatusRunning
 	return nil
 }
 

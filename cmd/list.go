@@ -312,6 +312,11 @@ func displayInstance(instance *types.Instance, protocol, domain string, verbose 
 			fmt.Printf("  Access: %s\n", color.New(color.Faint).Sprintf("Internal only (port %d)", instance.Network.InternalPort))
 		}
 	}
+
+	// Show host port mapping
+	if instance.Network.HostPort > 0 {
+		fmt.Printf("  Port: localhost:%d → container:%d\n", instance.Network.HostPort, instance.Network.InternalPort)
+	}
 }
 
 func getStatusColor(status types.ServiceStatus) func(format string, a ...interface{}) {

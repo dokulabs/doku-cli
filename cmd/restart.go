@@ -10,19 +10,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	restartPort int
+)
+
 var restartCmd = &cobra.Command{
 	Use:   "restart <service>",
 	Short: "Restart a service",
 	Long: `Restart a service instance.
 
 The service will be stopped and then started again.
-This is useful when you need to apply configuration changes or recover from errors.`,
+This is useful when you need to apply configuration changes or recover from errors.
+
+You can also change the port mapping when restarting:
+  doku restart postgres --port 5432   # Add or change port mapping
+  doku restart postgres --port 0      # Remove port mapping`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRestart,
 }
 
 func init() {
 	rootCmd.AddCommand(restartCmd)
+
+	restartCmd.Flags().IntVarP(&restartPort, "port", "p", -1, "Change host port mapping (0 to remove, -1 to keep current)")
 }
 
 func runRestart(cmd *cobra.Command, args []string) error {
@@ -81,9 +91,27 @@ func runRestart(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Restarting %s...\n", color.CyanString(instanceName))
 
-	// Restart the service
-	if err := serviceMgr.Restart(instanceName); err != nil {
-		return fmt.Errorf("failed to restart service: %w", err)
+	// Check if port flag was provided
+	if restartPort != -1 {
+		// Port change requested - need to recreate container
+		if restartPort != instance.Network.HostPort {
+			fmt.Printf("Changing port mapping: %d → %d\n", instance.Network.HostPort, restartPort)
+			if err := serviceMgr.RestartWithPort(instanceName, restartPort); err != nil {
+				return fmt.Errorf("failed to restart service with new port: %w", err)
+			}
+			// Update instance reference
+			instance, _ = serviceMgr.Get(instanceName)
+		} else {
+			// Same port, just do normal restart
+			if err := serviceMgr.Restart(instanceName); err != nil {
+				return fmt.Errorf("failed to restart service: %w", err)
+			}
+		}
+	} else {
+		// No port change, just restart
+		if err := serviceMgr.Restart(instanceName); err != nil {
+			return fmt.Errorf("failed to restart service: %w", err)
+		}
 	}
 
 	// Success message
@@ -98,6 +126,11 @@ func runRestart(cmd *cobra.Command, args []string) error {
 		if instance.Network.InternalPort > 0 {
 			fmt.Printf("Port: %d\n", instance.Network.InternalPort)
 		}
+	}
+
+	// Show host port mapping if configured
+	if instance.Network.HostPort > 0 {
+		fmt.Printf("Host port: localhost:%d → container:%d\n", instance.Network.HostPort, instance.Network.InternalPort)
 	}
 
 	// Show helpful commands

@@ -5,6 +5,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/config"
@@ -135,8 +136,14 @@ func runCatalogList(cmd *cobra.Command, args []string) error {
 	})
 
 	// Display services
-	for _, service := range services {
-		displayService(service, catalogVerbose)
+	if catalogVerbose {
+		// Verbose mode - show detailed info
+		for _, service := range services {
+			displayService(service, true)
+		}
+	} else {
+		// Compact table mode (default)
+		displayServicesTable(services)
 	}
 
 	fmt.Printf("\nTotal: %d service(s)\n", len(services))
@@ -307,6 +314,62 @@ func runCatalogShow(cmd *cobra.Command, args []string) error {
 }
 
 // Helper functions for displaying service information
+
+func displayServicesTable(services []*types.CatalogService) {
+	// Create tabwriter for aligned columns
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+	// Print header
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+		color.New(color.Bold).Sprint("NAME"),
+		color.New(color.Bold).Sprint("CATEGORY"),
+		color.New(color.Bold).Sprint("VERSIONS"),
+		color.New(color.Bold).Sprint("DESCRIPTION"))
+	fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+		strings.Repeat("─", 20),
+		strings.Repeat("─", 12),
+		strings.Repeat("─", 20),
+		strings.Repeat("─", 40))
+
+	// Print services
+	for _, service := range services {
+		icon := service.Icon
+		if icon == "" {
+			icon = "📦"
+		}
+
+		// Get version count and list
+		versionCount := len(service.Versions)
+		versions := make([]string, 0, len(service.Versions))
+		for version := range service.Versions {
+			versions = append(versions, version)
+		}
+		sort.Strings(versions)
+
+		// Truncate version list if too long
+		versionStr := strings.Join(versions, ", ")
+		if len(versionStr) > 30 {
+			versionStr = fmt.Sprintf("%d versions", versionCount)
+		}
+
+		// Truncate description if too long
+		description := service.Description
+		if len(description) > 50 {
+			description = description[:47] + "..."
+		}
+
+		fmt.Fprintf(w, "%s %s\t%s\t%s\t%s\n",
+			icon,
+			color.CyanString(service.Name),
+			color.YellowString(service.Category),
+			versionStr,
+			description)
+	}
+
+	w.Flush()
+	fmt.Println()
+}
 
 func displayService(service *types.CatalogService, verbose bool) {
 	icon := service.Icon

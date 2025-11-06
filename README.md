@@ -178,39 +178,51 @@ The upgrade command will:
 
 ## Available Services
 
-Browse the full catalog:
+**📋 See the complete and up-to-date service catalog:**
+→ **[Doku Service Catalog](https://github.com/dokulabs/doku-catalog)**
+
+The catalog includes 24+ services across multiple categories:
+- **Databases**: PostgreSQL (with pgvector), MySQL, MongoDB, MariaDB, ClickHouse, Redis, Memcached
+- **Message Queues**: RabbitMQ, Apache Kafka
+- **Search & Analytics**: Elasticsearch
+- **Monitoring**: Dozzle, Prometheus, Grafana, Jaeger, SigNoz, Sentry
+- **Web Servers**: Nginx
+- **Development Tools**: MailHog, Adminer, phpMyAdmin, LocalStack
+- **Storage**: MinIO
+- **Security**: HashiCorp Vault
+- **Coordination**: Zookeeper
+
+**Browse services locally:**
 
 ```bash
+# List all services in a compact table
 doku catalog
+
+# List services with detailed information
+doku catalog --verbose
+
+# Filter by category
+doku catalog --category database
+
+# Search for services
+doku catalog search postgres
+
+# Show service details
+doku catalog show postgres --verbose
 ```
 
-**Databases:**
-- PostgreSQL
-- MySQL
-- MongoDB
-- Redis
-- MariaDB
-- ClickHouse (with Zookeeper dependency)
+**Quick examples:**
 
-**Message Queues:**
-- RabbitMQ
-- Apache Kafka
-- NATS
+```bash
+# Install PostgreSQL with pgvector extension
+doku install postgres:17-pgvector
 
-**Search:**
-- Elasticsearch
-- Meilisearch
-- OpenSearch
+# Install Redis
+doku install redis
 
-**Monitoring:**
-- Prometheus
-- Grafana
-- **SigNoz** (Multi-container APM platform)
-
-**Coordination:**
-- Apache Zookeeper
-
-And many more...
+# Install multiple services
+doku install postgres redis rabbitmq
+```
 
 ## Usage Examples
 
