@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -16,6 +17,7 @@ var (
 	catalogCategory string
 	catalogSearch   string
 	catalogVerbose  bool
+	catalogSource   string // URL, branch, or tag for catalog update
 )
 
 var catalogCmd = &cobra.Command{
@@ -43,8 +45,23 @@ var catalogSearchCmd = &cobra.Command{
 var catalogUpdateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update service catalog",
-	Long:  `Download the latest service catalog from GitHub releases`,
-	RunE:  runCatalogUpdate,
+	Long: `Download the service catalog from GitHub.
+
+By default, downloads from the main branch. You can specify a different source:
+
+  # Update from a specific branch
+  doku catalog update --source develop
+
+  # Update from a specific tag
+  doku catalog update --source v1.2.0
+
+  # Update from a custom URL
+  doku catalog update --source https://example.com/catalog.tar.gz
+
+You can also use the DOKU_CATALOG_SOURCE environment variable:
+  export DOKU_CATALOG_SOURCE=develop
+  doku catalog update`,
+	RunE: runCatalogUpdate,
 }
 
 var catalogShowCmd = &cobra.Command{
@@ -70,6 +87,9 @@ func init() {
 
 	// Flags for show command
 	catalogShowCmd.Flags().BoolVarP(&catalogVerbose, "verbose", "v", false, "Show all versions")
+
+	// Flags for update command
+	catalogUpdateCmd.Flags().StringVarP(&catalogSource, "source", "s", "", "Catalog source (branch name, tag name, or full URL)")
 }
 
 func runCatalogList(cmd *cobra.Command, args []string) error {
@@ -172,6 +192,20 @@ func runCatalogUpdate(cmd *cobra.Command, args []string) error {
 
 	// Create catalog manager
 	catalogMgr := catalog.NewManager(cfgMgr.GetCatalogDir())
+
+	// Determine catalog source
+	// Priority: command flag > environment variable > default
+	source := catalogSource
+	if source == "" {
+		source = os.Getenv("DOKU_CATALOG_SOURCE")
+	}
+
+	// If custom source is specified, set it
+	if source != "" {
+		catalogURL := buildCatalogURL(source)
+		catalogMgr.SetCatalogURL(catalogURL)
+		color.Cyan("Using catalog source: %s", source)
+	}
 
 	// Check if local catalog exists
 	hasLocalCatalog := catalogMgr.CatalogExists()
@@ -381,4 +415,25 @@ func displayServiceDetails(service *types.CatalogService, showAllVersions bool) 
 	fmt.Println()
 	color.Cyan("To install: doku install %s [version]", service.Name)
 	fmt.Println()
+}
+
+// buildCatalogURL constructs the catalog URL from a source specification
+// Supports:
+// - Full URLs: https://github.com/user/repo/archive/refs/heads/branch.tar.gz
+// - Branch names: "main", "develop", "feature-branch"
+// - Tag names: "v1.0.0", "1.0.0"
+func buildCatalogURL(source string) string {
+	// If it's already a full URL, use it as-is
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		return source
+	}
+
+	// Check if it looks like a tag (starts with 'v' and has a number, or just numbers and dots)
+	if strings.HasPrefix(source, "v") || strings.Contains(source, ".") {
+		// Treat as a tag
+		return fmt.Sprintf("https://github.com/dokulabs/doku-catalog/archive/refs/tags/%s.tar.gz", source)
+	}
+
+	// Otherwise, treat as a branch name
+	return fmt.Sprintf("https://github.com/dokulabs/doku-catalog/archive/refs/heads/%s.tar.gz", source)
 }
