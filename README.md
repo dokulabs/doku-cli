@@ -24,6 +24,7 @@ Doku is a CLI tool that simplifies running and managing Docker-based services lo
 - 🔄 **Full lifecycle management** - Start, stop, restart, and remove services with ease
 - 🧩 **Multi-container services** - Deploy complex services with multiple containers
 - 🔗 **Dependency management** - Automatic installation of service dependencies
+- 🔌 **Port mapping** - Map container ports to host for direct access via localhost
 
 ## Quick Start
 
@@ -96,6 +97,12 @@ doku install postgres \
 
 # Install with resource limits
 doku install redis --memory 512m --cpu 1.0
+
+# Install with port mapping for direct access
+doku install postgres --port 5432
+
+# Install with multiple port mappings (e.g., RabbitMQ)
+doku install rabbitmq --port 5672 --port 15672
 
 # Install as internal service (no external access)
 doku install redis --internal
@@ -285,6 +292,70 @@ eval $(doku env postgres-14 --export --raw)
 doku env postgres-14 --json
 ```
 
+### Port Mapping
+
+Map container ports to your host machine for direct access via `localhost`:
+
+```bash
+# Install PostgreSQL with port mapping
+doku install postgres --port 5432
+
+# Connect directly via localhost
+psql -h localhost -p 5432 -U postgres
+
+# Install with custom host port (avoid conflicts)
+doku install postgres:16 --name postgres-16 --port 5433:5432
+
+# Connect to custom port
+psql -h localhost -p 5433 -U postgres
+```
+
+#### Multiple Port Mappings
+
+Services like RabbitMQ require multiple ports (AMQP + Management UI):
+
+```bash
+# Map both AMQP and Management UI ports
+doku install rabbitmq --port 5672 --port 15672
+
+# Access RabbitMQ
+# - AMQP: localhost:5672
+# - Management UI: http://localhost:15672
+
+# Map to different host ports
+doku install rabbitmq \
+  --port 5673:5672 \
+  --port 15673:15672
+
+# Now accessible at:
+# - AMQP: localhost:5673
+# - Management UI: http://localhost:15673
+```
+
+#### Viewing Port Mappings
+
+```bash
+# List services with port mappings
+$ doku list
+
+● postgres  [running]
+  Service: postgres (v16)
+  Port: localhost:5432 → container:5432
+
+● rabbitmq  [running]
+  Service: rabbitmq
+  Port: localhost:5672 → container:5672
+  Port: localhost:15672 → container:15672
+
+# Detailed port information
+$ doku info rabbitmq
+
+Network
+  Port Mappings:
+    localhost:5672 → container:5672
+    localhost:15672 → container:15672
+```
+
 ### API Gateway Pattern
 
 Build microservices architectures with internal-only services:
@@ -432,6 +503,20 @@ doku init --domain mydev.local
 - `--yes, -y` - Skip confirmation prompts (for remove/uninstall)
 - `--force, -f` - Force operation
 
+### Install Flags
+
+- `--name, -n` - Custom instance name
+- `--env, -e` - Environment variables (KEY=VALUE)
+- `--memory` - Memory limit (e.g., 512m, 1g)
+- `--cpu` - CPU limit (e.g., 0.5, 1.0)
+- `--port, -p` - Port mappings (can be specified multiple times)
+  - Format: `--port 5432` (maps container port to same host port)
+  - Format: `--port 5433:5432` (maps container port 5432 to host port 5433)
+- `--volume` - Volume mounts (host:container)
+- `--internal` - Install as internal service (no external access)
+- `--skip-deps` - Skip dependency installation
+- `--no-auto-install-deps` - Prompt before installing dependencies
+
 ## Uninstalling
 
 To completely remove Doku from your system:
@@ -538,6 +623,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 - ✅ Resource limits (CPU/memory)
 - ✅ Volume management
 - ✅ Internal-only services (API Gateway pattern)
+- ✅ Port mapping (single and multiple ports)
 
 **Multi-Container & Dependencies (Phase 3 Complete!):**
 - ✅ Multi-container service support
