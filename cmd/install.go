@@ -221,6 +221,19 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		domain = "doku.local"
 	}
 
+	// Allow user to customize domain
+	if !installYes && (spec.Protocol == "http" || spec.Protocol == "https") {
+		fmt.Println()
+		domainPrompt := &survey.Input{
+			Message: "Domain for this service:",
+			Default: domain,
+			Help:    "The domain where this service will be accessible (e.g., doku.local, myapp.local)",
+		}
+		if err := survey.AskOne(domainPrompt, &domain); err != nil {
+			return err
+		}
+	}
+
 	if spec.Protocol == "http" || spec.Protocol == "https" {
 		fmt.Printf("URL: %s://%s.%s\n", protocol, instanceName, domain)
 	}
@@ -306,9 +319,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	// Show admin port if available
+	// For services with admin ports (like RabbitMQ), the main URL routes to the admin/management UI
+	// The AMQP/protocol port is accessed via direct connection
 	if spec.AdminPort > 0 {
-		adminURL := fmt.Sprintf("%s://%s-admin.%s", protocol, instanceName, domain)
-		fmt.Printf("  Admin: %s (port %d)\n", adminURL, spec.AdminPort)
+		fmt.Printf("  Management UI: %s (port %d)\n", instance.URL, spec.AdminPort)
 	}
 
 	// Show monitoring status

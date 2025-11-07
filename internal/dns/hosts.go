@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 )
@@ -44,7 +45,13 @@ func (m *Manager) AddDokuDomain(domain string) error {
 	}
 
 	if exists {
-		// Update existing entries
+		// Check if it's the same domain
+		existingDomain, err := m.GetDokuDomain()
+		if err == nil && existingDomain == domain {
+			fmt.Printf("✓ Hosts file entries for %s already exist\n", domain)
+			return nil
+		}
+		// Update existing entries with new domain
 		return m.UpdateDokuDomain(domain)
 	}
 
@@ -208,12 +215,20 @@ func (m *Manager) copyWithSudo(src, dest string) error {
 	}
 
 	// If that fails, we need sudo
-	// Note: This will prompt for password
-	fmt.Println("Updating hosts file requires administrator privileges...")
+	fmt.Println()
+	fmt.Println("⚠️  Updating /etc/hosts requires administrator privileges")
+	fmt.Println("📝 Please enter your password when prompted...")
+	fmt.Println()
+
 	cmd := fmt.Sprintf("sudo cp %s %s", src, dest)
 
-	// Execute the command
-	return executeCommand(cmd)
+	// Execute the command - this will prompt for sudo password
+	if err := executeCommand(cmd); err != nil {
+		return fmt.Errorf("failed to update hosts file with sudo: %w", err)
+	}
+
+	fmt.Println("✓ Hosts file updated successfully")
+	return nil
 }
 
 // VerifyDNSResolution verifies that DNS resolution works for the domain
@@ -310,9 +325,22 @@ func (m *Manager) GetHostsFilePath() string {
 
 // executeCommand executes a shell command
 func executeCommand(cmd string) error {
-	// This is a placeholder - actual implementation would use exec.Command
-	// For now, we'll return an error suggesting manual intervention
-	return fmt.Errorf("please run the following command manually:\n  %s", cmd)
+	// Split command into parts
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 {
+		return fmt.Errorf("empty command")
+	}
+
+	// Create command
+	command := exec.Command(parts[0], parts[1:]...)
+
+	// Connect to stdin/stdout/stderr so user can interact with sudo password prompt
+	command.Stdin = os.Stdin
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+
+	// Run the command
+	return command.Run()
 }
 
 // AddSingleEntry adds a single custom entry to hosts file
@@ -326,8 +354,13 @@ func (m *Manager) AddSingleEntry(ip, hostname string) error {
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.Contains(line, hostname) {
-			return nil // Entry already exists
+		fields := strings.Fields(line)
+		// Check if hostname matches in the line
+		for i, field := range fields {
+			if i > 0 && field == hostname {
+				fmt.Printf("✓ Entry for %s already exists in hosts file\n", hostname)
+				return nil // Entry already exists
+			}
 		}
 	}
 

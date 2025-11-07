@@ -109,9 +109,12 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	// Show volume information
-	if len(instance.Volumes) > 0 {
-		fmt.Printf("  • Volumes: %d volume(s) ", len(instance.Volumes))
-		color.Red("(data will be lost!)")
+	hasVolumes := len(instance.Volumes) > 0
+	if hasVolumes {
+		fmt.Printf("  • Volumes: %d volume(s)\n", len(instance.Volumes))
+		for volumeName := range instance.Volumes {
+			fmt.Printf("    - %s\n", volumeName)
+		}
 	}
 
 	// Show dependencies
@@ -140,13 +143,37 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Ask about volume removal if service has volumes
+	removeVolumes := false
+	if hasVolumes && !removeYes {
+		fmt.Println()
+		color.Yellow("⚠️  This service has Docker volumes containing data")
+		volumePrompt := &survey.Confirm{
+			Message: "Do you want to remove the volumes? (This will delete all data)",
+			Default: false,
+		}
+		if err := survey.AskOne(volumePrompt, &removeVolumes); err != nil {
+			return fmt.Errorf("volume prompt failed: %w", err)
+		}
+	} else if hasVolumes && removeYes {
+		// With --yes flag, don't remove volumes by default for safety
+		removeVolumes = false
+		color.Yellow("⚠️  Volumes will be preserved (use 'doku remove' interactively to delete volumes)")
+	}
+
 	// Show progress
 	fmt.Println()
 	fmt.Printf("Removing %s...\n", color.CyanString(instanceName))
 
 	// Remove the service
-	if err := serviceMgr.Remove(instanceName, removeForce); err != nil {
+	if err := serviceMgr.Remove(instanceName, removeForce, removeVolumes); err != nil {
 		return fmt.Errorf("failed to remove service: %w", err)
+	}
+
+	// Show volume preservation message if applicable
+	if hasVolumes && !removeVolumes {
+		fmt.Println()
+		color.Green("✓ Service removed (volumes preserved)")
 	}
 
 	// Success message

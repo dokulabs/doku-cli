@@ -170,7 +170,7 @@ func (m *Manager) RestartWithPort(instanceName string, newPort int) error {
 }
 
 // Remove removes a service instance (stops and deletes)
-func (m *Manager) Remove(instanceName string, force bool) error {
+func (m *Manager) Remove(instanceName string, force bool, removeVolumes bool) error {
 	instance, err := m.configMgr.GetInstance(instanceName)
 	if err != nil {
 		return fmt.Errorf("instance not found: %w", err)
@@ -178,7 +178,7 @@ func (m *Manager) Remove(instanceName string, force bool) error {
 
 	// Handle multi-container services
 	if instance.IsMultiContainer {
-		return m.removeMultiContainerService(instance, force)
+		return m.removeMultiContainerService(instance, force, removeVolumes)
 	}
 
 	// Check if container exists
@@ -191,7 +191,11 @@ func (m *Manager) Remove(instanceName string, force bool) error {
 	if !containerExists {
 		// Container was already removed (manually or by error)
 		fmt.Printf("⚠️  Container %s does not exist (may have been removed manually)\n", instance.ContainerName)
-		fmt.Println("Cleaning up configuration and volumes...")
+		if removeVolumes {
+			fmt.Println("Cleaning up configuration and volumes...")
+		} else {
+			fmt.Println("Cleaning up configuration...")
+		}
 	} else {
 		// Stop container first if running and not forcing
 		if instance.Status == types.StatusRunning && !force {
@@ -215,9 +219,11 @@ func (m *Manager) Remove(instanceName string, force bool) error {
 			// Continue to clean up config even if container removal fails
 		}
 
-		// Remove associated volumes
-		if err := m.removeVolumes(instance); err != nil {
-			fmt.Printf("Warning: failed to remove some volumes: %v\n", err)
+		// Remove associated volumes only if user agreed
+		if removeVolumes {
+			if err := m.removeVolumes(instance); err != nil {
+				fmt.Printf("Warning: failed to remove some volumes: %v\n", err)
+			}
 		}
 	}
 
@@ -494,7 +500,7 @@ func (m *Manager) restartMultiContainerService(instance *types.Instance) error {
 }
 
 // removeMultiContainerService removes all containers in a multi-container service
-func (m *Manager) removeMultiContainerService(instance *types.Instance, force bool) error {
+func (m *Manager) removeMultiContainerService(instance *types.Instance, force bool, removeVolumes bool) error {
 	networkMgr := docker.NewNetworkManager(m.dockerClient)
 
 	// Remove containers in reverse order
@@ -534,9 +540,11 @@ func (m *Manager) removeMultiContainerService(instance *types.Instance, force bo
 		}
 	}
 
-	// Remove associated volumes
-	if err := m.removeMultiContainerVolumes(instance); err != nil {
-		fmt.Printf("Warning: failed to remove some volumes: %v\n", err)
+	// Remove associated volumes only if user agreed
+	if removeVolumes {
+		if err := m.removeMultiContainerVolumes(instance); err != nil {
+			fmt.Printf("Warning: failed to remove some volumes: %v\n", err)
+		}
 	}
 
 	// Remove from config - always do this to clean up state

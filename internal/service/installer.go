@@ -142,10 +142,10 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 			opts.Replace = true
 		}
 
-		// Remove existing instance
+		// Remove existing instance (preserve volumes during reinstall)
 		color.Cyan("Removing existing instance '%s'...", instanceName)
 		mgr := NewManager(i.dockerClient, i.configMgr)
-		if err := mgr.Remove(instanceName, false); err != nil {
+		if err := mgr.Remove(instanceName, false, false); err != nil {
 			return nil, fmt.Errorf("failed to remove existing instance: %w", err)
 		}
 		color.Green("✓ Existing instance removed")

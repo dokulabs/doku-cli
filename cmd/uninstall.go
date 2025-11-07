@@ -49,12 +49,14 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	green := color.New(color.FgGreen).SprintFunc()
 	cyan := color.New(color.FgCyan).SprintFunc()
 
-	fmt.Printf("\n%s\n\n", red("⚠️  Doku Uninstall"))
+	fmt.Printf("\n%s\n\n", red("⚠️  DANGER: Doku Uninstall"))
+	fmt.Println(red("⚠️  WARNING: This action CANNOT be undone!"))
+	fmt.Println()
 	fmt.Println("This will remove:")
 	fmt.Printf("  • All Docker containers managed by Doku\n")
-	fmt.Printf("  • All Docker volumes created by Doku\n")
 	fmt.Printf("  • Doku Docker network\n")
 	fmt.Printf("  • Configuration directory (~/.doku/)\n")
+	fmt.Printf("  • Docker volumes (you will be asked separately)\n")
 
 	if uninstallAll {
 		fmt.Printf("  • mkcert CA certificates (--all flag)\n")
@@ -66,7 +68,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	if !uninstallForce {
 		confirm := false
 		prompt := &survey.Confirm{
-			Message: "Are you sure you want to uninstall Doku?",
+			Message: red("⚠️  Are you absolutely sure you want to uninstall Doku? This CANNOT be undone!"),
 			Default: false,
 		}
 		if err := survey.AskOne(prompt, &confirm); err != nil {
@@ -80,6 +82,23 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
+
+	// Ask about volume removal
+	removeVolumes := false
+	if !uninstallForce {
+		fmt.Println(yellow("⚠️  Docker volumes contain your data (databases, files, etc.)"))
+		volumePrompt := &survey.Confirm{
+			Message: "Do you want to remove all Docker volumes? (This will delete all data)",
+			Default: false,
+		}
+		if err := survey.AskOne(volumePrompt, &removeVolumes); err != nil {
+			return fmt.Errorf("volume prompt failed: %w", err)
+		}
+		fmt.Println()
+	} else {
+		// Force mode removes volumes by default
+		removeVolumes = true
+	}
 
 	// Track what was cleaned up
 	var cleaned []string
@@ -136,29 +155,48 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Step 2: Remove Docker volumes
-	fmt.Printf("\n%s Removing Docker volumes...\n", cyan("→"))
-	if dockerClient != nil {
-		volumes, err := dockerClient.ListVolumes(ctx)
-		if err != nil {
-			fmt.Printf("  %s Failed to list volumes: %v\n", red("✗"), err)
-		} else {
-			volumesRemoved := 0
-			for _, volume := range volumes {
-				// Only process volumes with "doku-" prefix
-				if !strings.HasPrefix(volume.Name, "doku-") {
-					continue
-				}
+	// Step 2: Remove Docker volumes (only if user agreed)
+	if removeVolumes {
+		fmt.Printf("\n%s Removing Docker volumes...\n", cyan("→"))
+		if dockerClient != nil {
+			volumes, err := dockerClient.ListVolumes(ctx)
+			if err != nil {
+				fmt.Printf("  %s Failed to list volumes: %v\n", red("✗"), err)
+			} else {
+				volumesRemoved := 0
+				for _, volume := range volumes {
+					// Only process volumes with "doku-" prefix
+					if !strings.HasPrefix(volume.Name, "doku-") {
+						continue
+					}
 
-				if err := dockerClient.RemoveVolume(ctx, volume.Name); err != nil {
-					fmt.Printf("  %s Failed to remove volume %s: %v\n", red("✗"), volume.Name, err)
-				} else {
-					fmt.Printf("  %s Removed volume %s\n", green("✓"), volume.Name)
-					volumesRemoved++
+					if err := dockerClient.RemoveVolume(ctx, volume.Name); err != nil {
+						fmt.Printf("  %s Failed to remove volume %s: %v\n", red("✗"), volume.Name, err)
+					} else {
+						fmt.Printf("  %s Removed volume %s\n", green("✓"), volume.Name)
+						volumesRemoved++
+					}
+				}
+				if volumesRemoved > 0 {
+					cleaned = append(cleaned, fmt.Sprintf("%d Docker volume(s)", volumesRemoved))
 				}
 			}
-			if volumesRemoved > 0 {
-				cleaned = append(cleaned, fmt.Sprintf("%d Docker volume(s)", volumesRemoved))
+		}
+	} else {
+		fmt.Printf("\n%s Skipping Docker volumes (keeping your data)\n", cyan("→"))
+		// Count how many volumes would have been kept
+		if dockerClient != nil {
+			volumes, err := dockerClient.ListVolumes(ctx)
+			if err == nil {
+				volumesKept := 0
+				for _, volume := range volumes {
+					if strings.HasPrefix(volume.Name, "doku-") {
+						volumesKept++
+					}
+				}
+				if volumesKept > 0 {
+					fmt.Printf("  %s Preserved %d Docker volume(s) with your data\n", green("✓"), volumesKept)
+				}
 			}
 		}
 	}
