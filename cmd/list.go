@@ -313,8 +313,13 @@ func displayInstance(instance *types.Instance, protocol, domain string, verbose 
 		}
 	}
 
-	// Show host port mapping
-	if instance.Network.HostPort > 0 {
+	// Show host port mappings
+	if len(instance.Network.PortMappings) > 0 {
+		for containerPort, hostPort := range instance.Network.PortMappings {
+			fmt.Printf("  Port: localhost:%s → container:%s\n", hostPort, containerPort)
+		}
+	} else if instance.Network.HostPort > 0 {
+		// Backward compatibility with old single port format
 		fmt.Printf("  Port: localhost:%d → container:%d\n", instance.Network.HostPort, instance.Network.InternalPort)
 	}
 }

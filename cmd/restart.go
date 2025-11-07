@@ -128,8 +128,14 @@ func runRestart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Show host port mapping if configured
-	if instance.Network.HostPort > 0 {
+	// Show host port mappings if configured
+	if len(instance.Network.PortMappings) > 0 {
+		fmt.Println("Port mappings:")
+		for containerPort, hostPort := range instance.Network.PortMappings {
+			fmt.Printf("  localhost:%s → container:%s\n", hostPort, containerPort)
+		}
+	} else if instance.Network.HostPort > 0 {
+		// Backward compatibility with old single port format
 		fmt.Printf("Host port: localhost:%d → container:%d\n", instance.Network.HostPort, instance.Network.InternalPort)
 	}
 

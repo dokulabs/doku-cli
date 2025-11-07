@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -20,7 +21,7 @@ var (
 	installMemory        string
 	installCPU           string
 	installVolumes       []string
-	installPort          int
+	installPorts         []string
 	installYes           bool
 	installInternal      bool
 	installSkipDeps      bool
@@ -38,7 +39,9 @@ Examples:
   doku install redis --name cache  # Install with custom name
   doku install mysql --env MYSQL_ROOT_PASSWORD=secret
   doku install postgres --memory 2g --cpu 1.0
-  doku install postgres --port 5432  # Map container port to host port
+  doku install postgres --port 5432  # Map single port
+  doku install rabbitmq --port 5672 --port 15672  # Map multiple ports
+  doku install rabbitmq --port 5673:5672 --port 15673:15672  # Map to different host ports
   doku install user-service --internal  # Install as internal (no external access)`,
 	Args: cobra.ExactArgs(1),
 	RunE: runInstall,
@@ -52,7 +55,7 @@ func init() {
 	installCmd.Flags().StringVar(&installMemory, "memory", "", "Memory limit (e.g., 512m, 1g)")
 	installCmd.Flags().StringVar(&installCPU, "cpu", "", "CPU limit (e.g., 0.5, 1.0)")
 	installCmd.Flags().StringSliceVar(&installVolumes, "volume", []string{}, "Volume mounts (host:container)")
-	installCmd.Flags().IntVarP(&installPort, "port", "p", 0, "Map container port to host port (e.g., 5432)")
+	installCmd.Flags().StringSliceVarP(&installPorts, "port", "p", []string{}, "Port mappings (host:container or port). Can be specified multiple times")
 	installCmd.Flags().BoolVarP(&installYes, "yes", "y", false, "Skip confirmation prompts")
 	installCmd.Flags().BoolVar(&installInternal, "internal", false, "Install as internal service (no Traefik exposure)")
 	installCmd.Flags().BoolVar(&installSkipDeps, "skip-deps", false, "Skip dependency resolution and installation")
@@ -190,6 +193,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Parse port mappings
+	portMappings, err := parsePortMappings(installPorts, spec.Port)
+	if err != nil {
+		return fmt.Errorf("invalid port mapping: %w", err)
+	}
+
 	// Show instance name
 	instanceName := installName
 	if instanceName == "" {
@@ -257,7 +266,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		MemoryLimit:      installMemory,
 		CPULimit:         installCPU,
 		Volumes:          volumeMounts,
-		HostPort:         installPort,
+		PortMappings:     portMappings,
 		Internal:         installInternal,
 		SkipDependencies: installSkipDeps,
 		AutoInstallDeps:  !installNoAutoInstall, // Invert: if --no-auto-install-deps is true, AutoInstallDeps should be false
@@ -383,4 +392,43 @@ func getMonitoringToolName(tool string) string {
 	default:
 		return tool
 	}
+}
+
+// parsePortMappings parses port mapping strings into a map[containerPort]hostPort
+// Supports formats:
+//   - "5432"         -> maps container port 5432 to host port 5432
+//   - "5433:5432"    -> maps container port 5432 to host port 5433
+func parsePortMappings(portStrings []string, defaultPort int) (map[string]string, error) {
+	if len(portStrings) == 0 {
+		return nil, nil
+	}
+
+	mappings := make(map[string]string)
+
+	for _, portStr := range portStrings {
+		parts := strings.Split(portStr, ":")
+
+		if len(parts) == 1 {
+			// Format: "5432" - map container port to same host port
+			// Validate it's a number
+			if _, err := strconv.Atoi(parts[0]); err != nil {
+				return nil, fmt.Errorf("invalid port number '%s': %w", parts[0], err)
+			}
+			mappings[parts[0]] = parts[0]
+		} else if len(parts) == 2 {
+			// Format: "5433:5432" - map container port to different host port
+			// Validate both are numbers
+			if _, err := strconv.Atoi(parts[0]); err != nil {
+				return nil, fmt.Errorf("invalid host port '%s': %w", parts[0], err)
+			}
+			if _, err := strconv.Atoi(parts[1]); err != nil {
+				return nil, fmt.Errorf("invalid container port '%s': %w", parts[1], err)
+			}
+			mappings[parts[1]] = parts[0] // containerPort -> hostPort
+		} else {
+			return nil, fmt.Errorf("invalid port mapping format '%s' (use 'port' or 'host:container')", portStr)
+		}
+	}
+
+	return mappings, nil
 }

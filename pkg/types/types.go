@@ -141,7 +141,8 @@ type ContainerInfo struct {
 type NetworkConfig struct {
 	Name         string
 	InternalPort int
-	HostPort     int
+	HostPort     int                   // Deprecated: use PortMappings for multiple ports
+	PortMappings map[string]string     // Container port -> Host port mappings (as strings for TOML compatibility)
 }
 
 // ResourceConfig holds resource limits and usage

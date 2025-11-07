@@ -60,7 +60,7 @@ type InstallOptions struct {
 	MemoryLimit  string            // Override memory limit
 	CPULimit     string            // Override CPU limit
 	Volumes      map[string]string // Volume mappings (host:container)
-	HostPort     int               // Host port to map container port to (0 = no mapping)
+	PortMappings map[string]string // Port mappings (containerPort:hostPort as strings)
 	Internal     bool              // If true, don't expose via Traefik
 
 	// Dependency management (Phase 3)
@@ -193,7 +193,7 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		Image:        spec.Image,
 		Env:          i.envMapToSlice(env),
 		Labels:       i.generateLabels(instanceName, service, spec, opts.Internal),
-		ExposedPorts: i.createExposedPorts(spec.Port, opts.HostPort),
+		ExposedPorts: i.createExposedPorts(opts.PortMappings),
 	}
 
 	// Create host configuration
@@ -203,7 +203,7 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		},
 		Mounts:       i.createMounts(instanceName, spec, opts.Volumes),
 		LogConfig:    *monitoring.GetDockerLoggingConfig(&cfg.Monitoring),
-		PortBindings: i.createPortBindings(spec.Port, opts.HostPort),
+		PortBindings: i.createPortBindings(opts.PortMappings),
 	}
 
 	// Apply resource limits
@@ -270,7 +270,7 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		Network: types.NetworkConfig{
 			Name:         "doku-network",
 			InternalPort: spec.Port,
-			HostPort:     opts.HostPort,
+			PortMappings: opts.PortMappings,
 		},
 		Traefik: types.TraefikInstanceConfig{
 			Enabled:   true,
@@ -473,33 +473,37 @@ func (i *Installer) buildConnectionString(instanceName string, spec *types.Servi
 }
 
 // createExposedPorts creates exposed ports for the container
-func (i *Installer) createExposedPorts(containerPort int, hostPort int) nat.PortSet {
-	if hostPort == 0 {
+func (i *Installer) createExposedPorts(portMappings map[string]string) nat.PortSet {
+	if len(portMappings) == 0 {
 		// No port mapping requested
 		return nil
 	}
 
 	portSet := nat.PortSet{}
-	containerPortSpec := nat.Port(fmt.Sprintf("%d/tcp", containerPort))
-	portSet[containerPortSpec] = struct{}{}
+	for containerPortStr := range portMappings {
+		containerPortSpec := nat.Port(fmt.Sprintf("%s/tcp", containerPortStr))
+		portSet[containerPortSpec] = struct{}{}
+	}
 
 	return portSet
 }
 
 // createPortBindings creates port bindings for container-to-host port mapping
-func (i *Installer) createPortBindings(containerPort int, hostPort int) nat.PortMap {
-	if hostPort == 0 {
+func (i *Installer) createPortBindings(portMappings map[string]string) nat.PortMap {
+	if len(portMappings) == 0 {
 		// No port mapping requested
 		return nil
 	}
 
 	portMap := nat.PortMap{}
-	containerPortSpec := nat.Port(fmt.Sprintf("%d/tcp", containerPort))
-	portMap[containerPortSpec] = []nat.PortBinding{
-		{
-			HostIP:   "0.0.0.0",
-			HostPort: fmt.Sprintf("%d", hostPort),
-		},
+	for containerPortStr, hostPortStr := range portMappings {
+		containerPortSpec := nat.Port(fmt.Sprintf("%s/tcp", containerPortStr))
+		portMap[containerPortSpec] = []nat.PortBinding{
+			{
+				HostIP:   "0.0.0.0",
+				HostPort: hostPortStr,
+			},
+		}
 	}
 
 	return portMap

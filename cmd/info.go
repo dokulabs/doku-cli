@@ -169,7 +169,15 @@ func displayServiceInfo(instance *types.Instance, cfg *types.Config, containerIn
 	if instance.Network.InternalPort > 0 {
 		fmt.Printf("  Internal Port: %d\n", instance.Network.InternalPort)
 	}
-	if instance.Network.HostPort > 0 {
+
+	// Show port mappings
+	if len(instance.Network.PortMappings) > 0 {
+		fmt.Println("  Port Mappings:")
+		for containerPort, hostPort := range instance.Network.PortMappings {
+			fmt.Printf("    localhost:%s → container:%s\n", hostPort, containerPort)
+		}
+	} else if instance.Network.HostPort > 0 {
+		// Backward compatibility with old single port format
 		fmt.Printf("  Host Port: %d\n", instance.Network.HostPort)
 	}
 	fmt.Println()
