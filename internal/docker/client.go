@@ -243,6 +243,32 @@ func (c *Client) ImageExists(imageName string) (bool, error) {
 	return false, nil
 }
 
+// ImageBuild builds a Docker image
+func (c *Client) ImageBuild(buildContext io.Reader, options types.ImageBuildOptions) (types.ImageBuildResponse, error) {
+	response, err := c.cli.ImageBuild(c.ctx, buildContext, options)
+	if err != nil {
+		return types.ImageBuildResponse{}, fmt.Errorf("failed to build image: %w", err)
+	}
+	return response, nil
+}
+
+// ImageTag tags an image
+func (c *Client) ImageTag(source, target string) error {
+	if err := c.cli.ImageTag(c.ctx, source, target); err != nil {
+		return fmt.Errorf("failed to tag image: %w", err)
+	}
+	return nil
+}
+
+// ImageInspectWithRaw returns detailed information about an image
+func (c *Client) ImageInspectWithRaw(imageID string) (types.ImageInspect, []byte, error) {
+	inspect, raw, err := c.cli.ImageInspectWithRaw(c.ctx, imageID)
+	if err != nil {
+		return types.ImageInspect{}, nil, fmt.Errorf("failed to inspect image: %w", err)
+	}
+	return inspect, raw, nil
+}
+
 // Volume Operations
 
 // VolumeCreate creates a new volume

@@ -9,6 +9,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/config"
+	"github.com/dokulabs/doku-cli/internal/dns"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/internal/monitoring"
 	"github.com/dokulabs/doku-cli/pkg/types"
@@ -285,6 +286,13 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		return nil, fmt.Errorf("failed to save instance: %w", err)
 	}
 
+	// Add DNS entry if automatic DNS setup is enabled
+	if err := i.updateDNS(instanceName); err != nil {
+		// Don't fail installation if DNS update fails, just warn
+		color.Yellow("⚠️  Failed to add DNS entry: %v", err)
+		color.Yellow("You may need to manually add: 127.0.0.1 %s.%s", instanceName, i.domain)
+	}
+
 	return instance, nil
 }
 
@@ -507,4 +515,29 @@ func (i *Installer) createPortBindings(portMappings map[string]string) nat.PortM
 	}
 
 	return portMap
+}
+
+// updateDNS adds DNS entry for the service if automatic DNS setup is enabled
+func (i *Installer) updateDNS(instanceName string) error {
+	// Get config to check DNS setup preference
+	cfg, err := i.configMgr.Get()
+	if err != nil {
+		return fmt.Errorf("failed to get config: %w", err)
+	}
+
+	// Only add DNS if automatic setup is enabled
+	if cfg.Preferences.DNSSetup != "hosts" {
+		return nil // Not an error, just skip
+	}
+
+	// Import dns package
+	dnsMgr := dns.NewManager()
+
+	// Add DNS entry for this service
+	if err := dnsMgr.AddServiceDomain(instanceName, i.domain); err != nil {
+		return err
+	}
+
+	fmt.Printf("✓ Added %s.%s to /etc/hosts\n", instanceName, i.domain)
+	return nil
 }

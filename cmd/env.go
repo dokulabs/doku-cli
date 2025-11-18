@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -14,30 +13,22 @@ import (
 )
 
 var (
-	envRaw    bool
-	envExport bool
-	envJSON   bool
+	envShowValues bool
+	envExport     bool
 )
 
 var envCmd = &cobra.Command{
 	Use:   "env <service>",
-	Short: "Show environment variables for a service",
-	Long: `Display the environment variables configured for a service instance.
+	Short: "Display environment variables for a service",
+	Long: `Display environment variables configured for an installed service.
 
 By default, sensitive values (passwords, tokens, etc.) are masked for security.
-Use --raw to show actual values.
-
-Output formats:
-  Default: Key-value pairs (masked)
-  --raw: Key-value pairs (unmasked)
-  --export: Shell export format (for sourcing)
-  --json: JSON format
+Use --show-values to display actual values.
 
 Examples:
-  doku env postgres-main              # Show env vars (masked)
-  doku env postgres-main --raw        # Show actual values
-  doku env postgres-main --export     # Shell export format
-  doku env postgres-main --json       # JSON output`,
+  doku env postgres                 # Show environment variables (masked)
+  doku env postgres --show-values   # Show actual values
+  doku env rabbitmq --export        # Show in export format for shell`,
 	Args: cobra.ExactArgs(1),
 	RunE: runEnv,
 }
@@ -45,9 +36,8 @@ Examples:
 func init() {
 	rootCmd.AddCommand(envCmd)
 
-	envCmd.Flags().BoolVar(&envRaw, "raw", false, "Show raw values without masking")
-	envCmd.Flags().BoolVar(&envExport, "export", false, "Output in shell export format")
-	envCmd.Flags().BoolVar(&envJSON, "json", false, "Output in JSON format")
+	envCmd.Flags().BoolVarP(&envShowValues, "show-values", "s", false, "Show actual values (unmask sensitive data)")
+	envCmd.Flags().BoolVarP(&envExport, "export", "e", false, "Output in shell export format")
 }
 
 func runEnv(cmd *cobra.Command, args []string) error {
@@ -72,26 +62,6 @@ func runEnv(cmd *cobra.Command, args []string) error {
 	}
 	defer dockerClient.Close()
 
-	// Special handling for Traefik
-	if instanceName == "traefik" || instanceName == "doku-traefik" {
-		containerName := "doku-traefik"
-
-		// Check if exists
-		exists, err := dockerClient.ContainerExists(containerName)
-		if err != nil || !exists {
-			return fmt.Errorf("Traefik container not found. Run 'doku init' first")
-		}
-
-		color.Yellow("⚠️  Traefik is a system component and doesn't have configurable environment variables")
-		fmt.Println()
-		color.New(color.Faint).Println("Traefik is configured through:")
-		color.New(color.Faint).Println("  • Traefik configuration files (static and dynamic)")
-		color.New(color.Faint).Println("  • Docker labels on service containers")
-		fmt.Println()
-		color.New(color.Faint).Println("Use 'doku info traefik' to see Traefik configuration details")
-		return nil
-	}
-
 	// Create service manager
 	serviceMgr := service.NewManager(dockerClient, cfgMgr)
 
@@ -101,112 +71,83 @@ func runEnv(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("service '%s' not found. Use 'doku list' to see installed services", instanceName)
 	}
 
-	// Check if service has environment variables
+	// Check if there are any environment variables
 	if len(instance.Environment) == 0 {
-		color.Yellow("No environment variables configured for '%s'", instanceName)
+		fmt.Println()
+		color.Yellow("No environment variables configured for %s", instance.Name)
+		fmt.Println()
 		return nil
 	}
 
-	// Output based on format
-	if envJSON {
-		return outputJSON(instance.Environment, envRaw)
-	}
+	// Display environment variables
+	displayEnvironmentVariables(instance.Name, instance.Environment, envShowValues, envExport)
 
-	if envExport {
-		return outputExport(instance.Environment, envRaw)
-	}
-
-	return outputDefault(instanceName, instance.Environment, envRaw)
+	return nil
 }
 
-func outputDefault(instanceName string, env map[string]string, raw bool) error {
-	fmt.Println()
-	color.New(color.Bold, color.FgCyan).Printf("Environment Variables: %s\n", instanceName)
-	fmt.Println(strings.Repeat("=", 50))
-	fmt.Println()
-
+func displayEnvironmentVariables(serviceName string, env map[string]string, showValues bool, exportFormat bool) {
 	// Sort keys for consistent output
 	keys := make([]string, 0, len(env))
-	for k := range env {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	// Display each variable
-	for _, key := range keys {
-		value := env[key]
-
-		// Mask sensitive values unless --raw flag is set
-		if !raw && isSensitiveKey(key) {
-			value = maskValue(value)
-			fmt.Printf("  %s=%s %s\n",
-				color.YellowString(key),
-				value,
-				color.New(color.Faint).Sprint("(masked)"))
-		} else {
-			fmt.Printf("  %s=%s\n", color.YellowString(key), value)
-		}
-	}
-
-	fmt.Println()
-
-	// Show helpful tip if values are masked
-	if !raw && hasSensitiveKeys(env) {
-		color.New(color.Faint).Println("Use --raw to show actual values")
-	}
-
-	return nil
-}
-
-func outputExport(env map[string]string, raw bool) error {
-	// Sort keys for consistent output
-	keys := make([]string, 0, len(env))
-	for k := range env {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		value := env[key]
-
-		// Mask sensitive values unless --raw flag is set
-		if !raw && isSensitiveKey(key) {
-			value = maskValue(value)
-		}
-
-		// Escape value for shell
-		escapedValue := strings.ReplaceAll(value, `"`, `\"`)
-		fmt.Printf("export %s=\"%s\"\n", key, escapedValue)
-	}
-
-	return nil
-}
-
-func outputJSON(env map[string]string, raw bool) error {
-	output := make(map[string]string)
-
-	for key, value := range env {
-		// Mask sensitive values unless --raw flag is set
-		if !raw && isSensitiveKey(key) {
-			value = maskValue(value)
-		}
-		output[key] = value
-	}
-
-	jsonBytes, err := json.MarshalIndent(output, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal JSON: %w", err)
-	}
-
-	fmt.Println(string(jsonBytes))
-	return nil
-}
-
-func hasSensitiveKeys(env map[string]string) bool {
 	for key := range env {
-		if isSensitiveKey(key) {
-			return true
-		}
+		keys = append(keys, key)
 	}
-	return false
+	sort.Strings(keys)
+
+	if exportFormat {
+		// Export format for shell
+		fmt.Println()
+		for _, key := range keys {
+			value := env[key]
+			if !showValues && isSensitiveKey(key) {
+				value = maskValue(value)
+			}
+			// Escape quotes and special characters for shell
+			value = strings.ReplaceAll(value, "\"", "\\\"")
+			fmt.Printf("export %s=\"%s\"\n", key, value)
+		}
+		fmt.Println()
+	} else {
+		// Pretty format
+		fmt.Println()
+		color.New(color.Bold, color.FgCyan).Printf("Environment Variables for %s\n", serviceName)
+		fmt.Println(strings.Repeat("=", len(serviceName)+25))
+		fmt.Println()
+
+		if !showValues {
+			color.New(color.Faint).Println("🔒 Sensitive values are masked. Use --show-values to display actual values.")
+			fmt.Println()
+		}
+
+		for _, key := range keys {
+			value := env[key]
+			sensitive := isSensitiveKey(key)
+
+			// Display the key
+			if sensitive {
+				fmt.Printf("  %s ", color.YellowString(key))
+				fmt.Print(color.New(color.Faint).Sprint("🔐"))
+			} else {
+				fmt.Printf("  %s", color.CyanString(key))
+			}
+
+			// Display the value
+			displayValue := value
+			if !showValues && sensitive {
+				displayValue = maskValue(value)
+			}
+
+			fmt.Printf(" = %s\n", displayValue)
+		}
+
+		fmt.Println()
+
+		// Show helpful hints
+		if !showValues {
+			color.New(color.Faint).Printf("Tip: Use 'doku env %s --show-values' to see actual values\n", serviceName)
+		}
+		if !exportFormat {
+			color.New(color.Faint).Printf("Tip: Use 'doku env %s --export' for shell export format\n", serviceName)
+		}
+		fmt.Println()
+	}
 }

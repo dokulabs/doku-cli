@@ -170,9 +170,56 @@ func (m *Manager) GetDokuDomain() (string, error) {
 func (m *Manager) generateHostsEntries(domain string) string {
 	entries := fmt.Sprintf("%s\n", DokuStart)
 	entries += fmt.Sprintf("127.0.0.1 %s %s\n", domain, DokuMarker)
-	entries += fmt.Sprintf("127.0.0.1 *.%s %s\n", domain, DokuMarker)
 	entries += fmt.Sprintf("%s\n", DokuEnd)
 	return entries
+}
+
+// AddServiceDomain adds a single service DNS entry to the hosts file
+// For example: rabbitmq.doku.local -> 127.0.0.1
+func (m *Manager) AddServiceDomain(serviceName, baseDomain string) error {
+	subdomain := fmt.Sprintf("%s.%s", serviceName, baseDomain)
+
+	// Check if entry already exists
+	content, err := os.ReadFile(m.hostsFile)
+	if err != nil {
+		return fmt.Errorf("failed to read hosts file: %w", err)
+	}
+
+	// Check if this subdomain already exists (in doku-managed section or as standalone)
+	scanner := bufio.NewScanner(strings.NewReader(string(content)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, DokuMarker) && strings.Contains(line, subdomain) {
+			// Entry already exists
+			return nil
+		}
+	}
+
+	// Add new entry inside the doku-managed section
+	lines := strings.Split(string(content), "\n")
+	var newLines []string
+	added := false
+
+	for _, line := range lines {
+		newLines = append(newLines, line)
+
+		// Add the new service entry just before the DokuEnd marker
+		if !added && strings.Contains(line, DokuEnd) {
+			// Insert before the DokuEnd line
+			newLines = newLines[:len(newLines)-1] // Remove the DokuEnd we just added
+			newLines = append(newLines, fmt.Sprintf("127.0.0.1 %s %s", subdomain, DokuMarker))
+			newLines = append(newLines, line) // Add back the DokuEnd
+			added = true
+		}
+	}
+
+	// If DokuEnd marker doesn't exist (no doku-managed section), add as standalone entry
+	if !added {
+		newLines = append(newLines, fmt.Sprintf("127.0.0.1 %s %s", subdomain, DokuMarker))
+	}
+
+	updatedContent := strings.Join(newLines, "\n")
+	return m.writeHostsFile(updatedContent)
 }
 
 // writeHostsFile writes content to the hosts file (requires sudo on Unix)

@@ -265,6 +265,13 @@ func (i *Installer) installMultiContainer(
 		return nil, fmt.Errorf("failed to save instance: %w", err)
 	}
 
+	// Add DNS entry if automatic DNS setup is enabled
+	if err := i.updateDNS(instanceName); err != nil {
+		// Don't fail installation if DNS update fails, just warn
+		color.Yellow("⚠️  Failed to add DNS entry: %v", err)
+		color.Yellow("You may need to manually add: 127.0.0.1 %s.%s", instanceName, i.domain)
+	}
+
 	return instance, nil
 }
 

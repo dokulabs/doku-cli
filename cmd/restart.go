@@ -3,9 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/dokulabs/doku-cli/internal/config"
-	"github.com/dokulabs/doku-cli/internal/docker"
-	"github.com/dokulabs/doku-cli/internal/service"
+	"github.com/dokulabs/doku-cli/pkg/types"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -38,50 +36,30 @@ func init() {
 func runRestart(cmd *cobra.Command, args []string) error {
 	instanceName := args[0]
 
-	// Create config manager
-	cfgMgr, err := config.New()
+	// Initialize config manager
+	cfgMgr, err := initConfigManager()
 	if err != nil {
-		return fmt.Errorf("failed to create config manager: %w", err)
+		if err == types.ErrNotInitialized {
+			return nil
+		}
+		return err
 	}
 
-	// Check if initialized
-	if !cfgMgr.IsInitialized() {
-		color.Yellow("⚠️  Doku is not initialized. Run 'doku init' first.")
-		return nil
-	}
-
-	// Create Docker client
-	dockerClient, err := docker.NewClient()
+	// Initialize Docker client
+	dockerClient, err := initDockerClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return err
 	}
 	defer dockerClient.Close()
 
-	// Special handling for Traefik
-	if instanceName == "traefik" || instanceName == "doku-traefik" {
-		containerName := "doku-traefik"
-
-		// Check if exists
-		exists, err := dockerClient.ContainerExists(containerName)
-		if err != nil || !exists {
-			return fmt.Errorf("Traefik container not found. Run 'doku init' first")
-		}
-
-		fmt.Println("Restarting Traefik...")
-
-		timeout := 10
-		if err := dockerClient.ContainerRestart(containerName, &timeout); err != nil {
-			return fmt.Errorf("failed to restart Traefik: %w", err)
-		}
-
-		color.Green("✓ Traefik restarted successfully")
-		cfg, _ := cfgMgr.Get()
-		fmt.Printf("Dashboard: %s://traefik.%s\n", cfg.Preferences.Protocol, cfg.Preferences.Domain)
-		return nil
+	// Handle Traefik command
+	handled, err := handleTraefikCommand(instanceName, TraefikActionRestart, dockerClient, cfgMgr)
+	if handled {
+		return err
 	}
 
 	// Create service manager
-	serviceMgr := service.NewManager(dockerClient, cfgMgr)
+	serviceMgr := getServiceManager(dockerClient, cfgMgr)
 
 	// Get instance to check if it exists
 	instance, err := serviceMgr.Get(instanceName)
@@ -100,7 +78,10 @@ func runRestart(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to restart service with new port: %w", err)
 			}
 			// Update instance reference
-			instance, _ = serviceMgr.Get(instanceName)
+			instance, err = serviceMgr.Get(instanceName)
+			if err != nil {
+				return fmt.Errorf("failed to get updated instance: %w", err)
+			}
 		} else {
 			// Same port, just do normal restart
 			if err := serviceMgr.Restart(instanceName); err != nil {

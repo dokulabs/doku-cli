@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/dokulabs/doku-cli/pkg/types"
@@ -232,21 +234,100 @@ func (m *Manager) GetServiceVersion(serviceName, version string) (*types.Service
 	return spec, nil
 }
 
-// getLatestVersion returns the latest version of a service
-// For now, we'll use a simple heuristic (first version in map)
-// TODO: Implement proper semantic versioning logic
+// getLatestVersion returns the latest version of a service using semantic versioning
 func (m *Manager) getLatestVersion(service *types.CatalogService) string {
 	if len(service.Versions) == 0 {
 		return ""
 	}
 
-	// Return the first version as "latest"
-	// TODO: Implement semantic version sorting
+	// Collect all versions into a slice
+	versions := make([]string, 0, len(service.Versions))
 	for version := range service.Versions {
-		return version
+		versions = append(versions, version)
 	}
 
-	return ""
+	// Sort versions using semantic versioning comparison
+	sort.Slice(versions, func(i, j int) bool {
+		return compareVersions(versions[i], versions[j]) < 0
+	})
+
+	// Return the last (highest) version
+	return versions[len(versions)-1]
+}
+
+// compareVersions compares two version strings
+// Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
+// Handles versions like "15", "16.1", "v1.2.3", "1.2.3-beta"
+func compareVersions(v1, v2 string) int {
+	// Normalize versions by removing 'v' prefix
+	v1 = strings.TrimPrefix(v1, "v")
+	v2 = strings.TrimPrefix(v2, "v")
+
+	// Split by dots and compare each segment
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var p1, p2 string
+		if i < len(parts1) {
+			p1 = parts1[i]
+		} else {
+			p1 = "0"
+		}
+		if i < len(parts2) {
+			p2 = parts2[i]
+		} else {
+			p2 = "0"
+		}
+
+		// Handle pre-release versions (e.g., "1.2.3-beta")
+		// Split on hyphen and compare numeric part first
+		p1Parts := strings.SplitN(p1, "-", 2)
+		p2Parts := strings.SplitN(p2, "-", 2)
+
+		// Compare numeric parts
+		n1, err1 := strconv.Atoi(p1Parts[0])
+		n2, err2 := strconv.Atoi(p2Parts[0])
+
+		if err1 != nil || err2 != nil {
+			// If not numeric, do string comparison
+			if p1 < p2 {
+				return -1
+			} else if p1 > p2 {
+				return 1
+			}
+		} else {
+			if n1 < n2 {
+				return -1
+			} else if n1 > n2 {
+				return 1
+			}
+		}
+
+		// If numeric parts are equal, compare pre-release tags
+		if len(p1Parts) > 1 || len(p2Parts) > 1 {
+			// Version without pre-release is greater than version with pre-release
+			if len(p1Parts) == 1 && len(p2Parts) > 1 {
+				return 1
+			} else if len(p1Parts) > 1 && len(p2Parts) == 1 {
+				return -1
+			} else if len(p1Parts) > 1 && len(p2Parts) > 1 {
+				// Compare pre-release tags lexicographically
+				if p1Parts[1] < p2Parts[1] {
+					return -1
+				} else if p1Parts[1] > p2Parts[1] {
+					return 1
+				}
+			}
+		}
+	}
+
+	return 0
 }
 
 // ListServices returns a list of all available services

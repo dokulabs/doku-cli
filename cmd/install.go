@@ -9,6 +9,7 @@ import (
 	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/project"
 	"github.com/dokulabs/doku-cli/internal/service"
 	"github.com/dokulabs/doku-cli/pkg/types"
 	"github.com/fatih/color"
@@ -16,24 +17,26 @@ import (
 )
 
 var (
-	installName          string
-	installEnv           []string
-	installMemory        string
-	installCPU           string
-	installVolumes       []string
-	installPorts         []string
-	installYes           bool
-	installInternal      bool
-	installSkipDeps      bool
-	installNoAutoInstall bool
+	installName               string
+	installEnv                []string
+	installMemory             string
+	installCPU                string
+	installVolumes            []string
+	installPorts              []string
+	installYes                bool
+	installInternal           bool
+	installSkipDeps           bool
+	installDisableAutoInstall bool // When true, prompts before installing dependencies
+	installPath               string // Path to custom project with Dockerfile
 )
 
 var installCmd = &cobra.Command{
 	Use:   "install <service>[:<version>]",
 	Short: "Install a service from the catalog",
-	Long: `Install and start a service from the catalog.
+	Long: `Install and start a service from the catalog or custom project.
 
 Examples:
+  # Catalog services
   doku install postgres          # Install latest PostgreSQL
   doku install postgres:16       # Install PostgreSQL 16
   doku install redis --name cache  # Install with custom name
@@ -42,7 +45,12 @@ Examples:
   doku install postgres --port 5432  # Map single port
   doku install rabbitmq --port 5672 --port 15672  # Map multiple ports
   doku install rabbitmq --port 5673:5672 --port 15673:15672  # Map to different host ports
-  doku install user-service --internal  # Install as internal (no external access)`,
+  doku install user-service --internal  # Install as internal (no external access)
+
+  # Custom projects with Dockerfile
+  doku install frontend --path=./frontend  # Install from custom Dockerfile
+  doku install api --path=./api --internal  # Install as internal service
+  doku install worker --path=./worker --env QUEUE_URL=redis://redis:6379`,
 	Args: cobra.ExactArgs(1),
 	RunE: runInstall,
 }
@@ -59,11 +67,17 @@ func init() {
 	installCmd.Flags().BoolVarP(&installYes, "yes", "y", false, "Skip confirmation prompts")
 	installCmd.Flags().BoolVar(&installInternal, "internal", false, "Install as internal service (no Traefik exposure)")
 	installCmd.Flags().BoolVar(&installSkipDeps, "skip-deps", false, "Skip dependency resolution and installation")
-	installCmd.Flags().BoolVar(&installNoAutoInstall, "no-auto-install-deps", false, "Prompt before installing dependencies (interactive mode)")
+	installCmd.Flags().BoolVar(&installDisableAutoInstall, "no-auto-install-deps", false, "Prompt before installing dependencies (interactive mode)")
+	installCmd.Flags().StringVar(&installPath, "path", "", "Path to custom project with Dockerfile")
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
 	serviceSpec := args[0]
+
+	// Check if --path is provided (custom project installation)
+	if installPath != "" {
+		return installCustomProject(serviceSpec)
+	}
 
 	// Parse service:version
 	parts := strings.SplitN(serviceSpec, ":", 2)
@@ -282,7 +296,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		PortMappings:     portMappings,
 		Internal:         installInternal,
 		SkipDependencies: installSkipDeps,
-		AutoInstallDeps:  !installNoAutoInstall, // Invert: if --no-auto-install-deps is true, AutoInstallDeps should be false
+		AutoInstallDeps:  !installDisableAutoInstall,
 	}
 
 	instance, err := installer.Install(opts)
@@ -294,6 +308,16 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	color.Green("✓ Successfully installed %s", instance.Name)
 	fmt.Println()
+
+	// Show DNS setup message for manual mode
+	if cfg.Preferences.DNSSetup == "manual" && (spec.Protocol == "http" || spec.Protocol == "https") {
+		color.New(color.Bold, color.FgYellow).Println("📝 Manual DNS Setup Required:")
+		fmt.Println()
+		fmt.Printf("Add this entry to your DNS or /etc/hosts:\n")
+		color.Cyan("  127.0.0.1 %s.%s", instance.Name, domain)
+		fmt.Println()
+		fmt.Println()
+	}
 
 	// Show multi-container status if applicable
 	if instance.IsMultiContainer {
@@ -312,6 +336,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	if spec.Protocol == "http" || spec.Protocol == "https" {
 		color.Cyan("Access your service:")
 		fmt.Printf("  URL: %s\n", instance.URL)
+		if cfg.Preferences.DNSSetup == "manual" {
+			color.New(color.Faint).Printf("  (requires DNS setup above)\n")
+		}
 	} else if !instance.IsMultiContainer {
 		color.Cyan("Connection information:")
 		fmt.Printf("  Host: %s\n", instance.Name)
@@ -337,7 +364,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	// Show useful commands
 	color.Cyan("Useful commands:")
-	fmt.Printf("  doku list            # List all services\n")
+	fmt.Printf("  doku env %s      # Show environment variables\n", instance.Name)
+	fmt.Printf("  doku info %s     # Show detailed information\n", instance.Name)
 	fmt.Printf("  doku logs %s     # View logs\n", instance.Name)
 	fmt.Printf("  doku stop %s     # Stop service\n", instance.Name)
 	fmt.Printf("  doku remove %s   # Remove service\n", instance.Name)
@@ -445,4 +473,168 @@ func parsePortMappings(portStrings []string, defaultPort int) (map[string]string
 	}
 
 	return mappings, nil
+}
+
+// installCustomProject installs a custom project from a Dockerfile
+func installCustomProject(serviceName string) error {
+	// Create managers
+	cfgMgr, err := config.New()
+	if err != nil {
+		return fmt.Errorf("failed to create config manager: %w", err)
+	}
+
+	dockerClient, err := docker.NewClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	defer dockerClient.Close()
+
+	projectMgr, err := project.NewManager(dockerClient, cfgMgr)
+	if err != nil {
+		return fmt.Errorf("failed to create project manager: %w", err)
+	}
+
+	// Parse environment variables
+	envOverrides := make(map[string]string)
+	for _, env := range installEnv {
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) == 2 {
+			envOverrides[parts[0]] = parts[1]
+		}
+	}
+
+	// Parse port mappings
+	var mainPort int
+	additionalPorts := []string{}
+	if len(installPorts) > 0 {
+		// First port is the main port
+		parts := strings.Split(installPorts[0], ":")
+		if len(parts) >= 1 {
+			mainPort, _ = strconv.Atoi(parts[len(parts)-1])
+		}
+		// Rest are additional ports
+		if len(installPorts) > 1 {
+			additionalPorts = installPorts[1:]
+		}
+	}
+
+	// Determine instance name
+	instanceName := installName
+	if instanceName == "" {
+		instanceName = serviceName
+	}
+
+	// Get config for domain
+	cfg, _ := cfgMgr.Get()
+	protocol := cfg.Preferences.Protocol
+	if protocol == "" {
+		protocol = "https"
+	}
+	domain := cfg.Preferences.Domain
+	if domain == "" {
+		domain = "doku.local"
+	}
+
+	// Display information
+	fmt.Println()
+	color.Cyan("Installing custom project: %s", instanceName)
+	fmt.Printf("Path: %s\n", installPath)
+	if installInternal {
+		fmt.Println("Mode: Internal (no Traefik exposure)")
+	} else {
+		fmt.Println("Mode: Public (Traefik enabled)")
+		if mainPort > 0 {
+			fmt.Printf("URL: %s://%s.%s\n", protocol, instanceName, domain)
+		}
+	}
+	if mainPort > 0 {
+		fmt.Printf("Port: %d\n", mainPort)
+	}
+	fmt.Println()
+
+	// Confirm if not using --yes
+	if !installYes {
+		confirm := false
+		prompt := &survey.Confirm{
+			Message: "Proceed with installation?",
+			Default: true,
+		}
+		if err := survey.AskOne(prompt, &confirm); err != nil {
+			return err
+		}
+		if !confirm {
+			color.Yellow("Installation cancelled")
+			return nil
+		}
+		fmt.Println()
+	}
+
+	// Step 1: Add project
+	color.Cyan("Step 1/3: Adding project...")
+	addOpts := project.AddOptions{
+		ProjectPath:  installPath,
+		Name:         instanceName,
+		Port:         mainPort,
+		Ports:        additionalPorts,
+		Environment:  envOverrides,
+		Internal:     installInternal,
+	}
+
+	proj, err := projectMgr.Add(addOpts)
+	if err != nil {
+		return fmt.Errorf("failed to add project: %w", err)
+	}
+	color.Green("✓ Project added")
+	fmt.Println()
+
+	// Step 2: Build project
+	color.Cyan("Step 2/3: Building Docker image...")
+	buildOpts := project.BuildOptions{
+		Name: instanceName,
+	}
+
+	if err := projectMgr.Build(buildOpts); err != nil {
+		return fmt.Errorf("failed to build project: %w", err)
+	}
+	color.Green("✓ Build completed")
+	fmt.Println()
+
+	// Step 3: Run project
+	color.Cyan("Step 3/3: Starting container...")
+	runOpts := project.RunOptions{
+		Name:   instanceName,
+		Detach: true,
+	}
+
+	if err := projectMgr.Run(runOpts); err != nil {
+		return fmt.Errorf("failed to run project: %w", err)
+	}
+	color.Green("✓ Container started")
+	fmt.Println()
+
+	// Success message
+	color.Green("✓ Successfully installed %s", instanceName)
+	fmt.Println()
+
+	// Show connection information
+	if !installInternal && proj.URL != "" {
+		color.Cyan("Access your service:")
+		fmt.Printf("  URL: %s\n", proj.URL)
+	} else if mainPort > 0 {
+		color.Cyan("Connection information:")
+		fmt.Printf("  Host: %s\n", instanceName)
+		fmt.Printf("  Port: %d\n", mainPort)
+	}
+
+	fmt.Println()
+
+	// Show useful commands
+	color.Cyan("Useful commands:")
+	fmt.Printf("  doku env %s      # Show environment variables\n", instanceName)
+	fmt.Printf("  doku logs %s     # View logs\n", instanceName)
+	fmt.Printf("  doku stop %s     # Stop service\n", instanceName)
+	fmt.Printf("  doku remove %s   # Remove service\n", instanceName)
+	fmt.Println()
+
+	return nil
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	dockerTypes "github.com/docker/docker/api/types"
@@ -46,7 +47,7 @@ func (m *Manager) Start(instanceName string) error {
 
 	// Check if already running
 	if instance.Status == types.StatusRunning {
-		return fmt.Errorf("instance '%s' is already running", instanceName)
+		return fmt.Errorf("%w: %s", types.ErrAlreadyRunning, instanceName)
 	}
 
 	// Handle multi-container services
@@ -75,7 +76,7 @@ func (m *Manager) Stop(instanceName string) error {
 
 	// Check if already stopped
 	if instance.Status == types.StatusStopped {
-		return fmt.Errorf("instance '%s' is already stopped", instanceName)
+		return fmt.Errorf("%w: %s", types.ErrAlreadyStopped, instanceName)
 	}
 
 	// Handle multi-container services
@@ -245,20 +246,20 @@ func (m *Manager) GetLogs(instanceName string, follow bool) (string, error) {
 	}
 	defer logsReader.Close()
 
-	// Read all logs into string
+	// Read all logs into string using strings.Builder for efficiency
 	buf := make([]byte, 4096)
-	var logs string
+	var logs strings.Builder
 	for {
 		n, err := logsReader.Read(buf)
 		if n > 0 {
-			logs += string(buf[:n])
+			logs.Write(buf[:n])
 		}
 		if err != nil {
 			break
 		}
 	}
 
-	return logs, nil
+	return logs.String(), nil
 }
 
 // GetStatus retrieves the current status of an instance
@@ -390,44 +391,15 @@ func (m *Manager) GetConnectionInfo(instanceName string) (*types.ConnectionInfo,
 	return info, nil
 }
 
-// containsAny checks if a string contains any of the substrings
+// containsAny checks if a string contains any of the substrings (case-insensitive)
 func containsAny(s string, substrs []string) bool {
-	s = toLower(s)
+	s = strings.ToLower(s)
 	for _, substr := range substrs {
-		if contains(s, substr) {
+		if strings.Contains(s, substr) {
 			return true
 		}
 	}
 	return false
-}
-
-// toLower converts string to lowercase
-func toLower(s string) string {
-	runes := []rune(s)
-	for i, r := range runes {
-		if r >= 'A' && r <= 'Z' {
-			runes[i] = r + 32
-		}
-	}
-	return string(runes)
-}
-
-// contains checks if string contains substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && indexOfSubstring(s, substr) >= 0
-}
-
-// indexOfSubstring returns the index of substring in string
-func indexOfSubstring(s, substr string) int {
-	if len(substr) > len(s) {
-		return -1
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
 }
 
 // Multi-Container Service Methods
@@ -755,18 +727,18 @@ func (m *Manager) GetContainerLogs(instanceName, containerName string, follow bo
 	}
 	defer logsReader.Close()
 
-	// Read all logs into string
+	// Read all logs into string using strings.Builder for efficiency
 	buf := make([]byte, 4096)
-	var logs string
+	var logs strings.Builder
 	for {
 		n, err := logsReader.Read(buf)
 		if n > 0 {
-			logs += string(buf[:n])
+			logs.Write(buf[:n])
 		}
 		if err != nil {
 			break
 		}
 	}
 
-	return logs, nil
+	return logs.String(), nil
 }

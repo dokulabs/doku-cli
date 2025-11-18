@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/dokulabs/doku-cli/internal/config"
@@ -308,9 +309,33 @@ func formatUptime(startedAt string) string {
 		return "N/A"
 	}
 
-	// Parse Docker's time format
-	// This is a simplified version
-	return "Active" // Would need proper time parsing from Docker format
+	// Parse Docker's time format (RFC3339)
+	startTime, err := time.Parse(time.RFC3339Nano, startedAt)
+	if err != nil {
+		// Try without nanoseconds
+		startTime, err = time.Parse(time.RFC3339, startedAt)
+		if err != nil {
+			return "Unknown"
+		}
+	}
+
+	// Calculate uptime duration
+	uptime := time.Since(startTime)
+
+	// Format duration in a human-readable way
+	days := int(uptime.Hours() / 24)
+	hours := int(uptime.Hours()) % 24
+	minutes := int(uptime.Minutes()) % 60
+
+	if days > 0 {
+		return fmt.Sprintf("%d days, %d hours", days, hours)
+	} else if hours > 0 {
+		return fmt.Sprintf("%d hours, %d minutes", hours, minutes)
+	} else if minutes > 0 {
+		return fmt.Sprintf("%d minutes", minutes)
+	}
+
+	return fmt.Sprintf("%d seconds", int(uptime.Seconds()))
 }
 
 func displayTraefikInfo(cfg *types.Config, dockerClient *docker.Client) error {
@@ -324,7 +349,9 @@ func displayTraefikInfo(cfg *types.Config, dockerClient *docker.Client) error {
 
 	// Determine status
 	var status types.ServiceStatus
-	if containerInfo.State.Running {
+	if containerInfo.State == nil {
+		status = types.StatusUnknown
+	} else if containerInfo.State.Running {
 		status = types.StatusRunning
 	} else {
 		status = types.StatusStopped

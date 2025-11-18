@@ -239,6 +239,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 				fmt.Println("# Doku local development")
 				color.Cyan("127.0.0.1 %s", initDomain)
 				color.Cyan("127.0.0.1 traefik.%s", initDomain)
+				if monitoringTool == "dozzle" {
+					color.Cyan("127.0.0.1 dozzle.%s", initDomain)
+				}
 				color.Cyan("# Add more entries as you install services:")
 				color.Cyan("# 127.0.0.1 <service>.%s", initDomain)
 				fmt.Println("EOF\"")
@@ -248,6 +251,23 @@ func runInit(cmd *cobra.Command, args []string) error {
 				fmt.Println()
 			} else {
 				printSuccess(fmt.Sprintf("DNS entries added to %s", dnsMgr.GetHostsFilePath()))
+
+				// Add specific DNS entries for core services
+				// Add Traefik DNS entry
+				if err := dnsMgr.AddServiceDomain("traefik", initDomain); err != nil {
+					color.Yellow("⚠️  Failed to add Traefik DNS entry: %v", err)
+				} else {
+					printSuccess(fmt.Sprintf("Added traefik.%s", initDomain))
+				}
+
+				// Add Dozzle DNS entry if being installed
+				if monitoringTool == "dozzle" {
+					if err := dnsMgr.AddServiceDomain("dozzle", initDomain); err != nil {
+						color.Yellow("⚠️  Failed to add Dozzle DNS entry: %v", err)
+					} else {
+						printSuccess(fmt.Sprintf("Added dozzle.%s", initDomain))
+					}
+				}
 			}
 
 			// Update config with DNS setup method
@@ -259,7 +279,20 @@ func runInit(cmd *cobra.Command, args []string) error {
 			}
 		} else {
 			printSuccess("Skipping automatic DNS setup")
-			color.Yellow(fmt.Sprintf("\nPlease configure DNS for *.%s to point to 127.0.0.1", initDomain))
+			fmt.Println()
+			color.New(color.Bold, color.FgYellow).Println("Manual DNS Setup Required:")
+			fmt.Println()
+			color.New(color.Bold).Printf("Add these entries to your DNS or %s:\n", dnsMgr.GetHostsFilePath())
+			fmt.Println()
+			color.Cyan("127.0.0.1 %s", initDomain)
+			color.Cyan("127.0.0.1 traefik.%s", initDomain)
+			if monitoringTool == "dozzle" {
+				color.Cyan("127.0.0.1 dozzle.%s", initDomain)
+			}
+			fmt.Println()
+			color.New(color.Faint).Println("Note: When you install services, you'll need to manually add DNS entries:")
+			color.New(color.Faint).Printf("      127.0.0.1 <service>.%s\n", initDomain)
+			fmt.Println()
 
 			// Update config with DNS setup method
 			if err := cfgMgr.Update(func(c *types.Config) error {
@@ -592,4 +625,3 @@ func installMonitoringTool(dockerClient *docker.Client, cfgMgr *config.Manager, 
 	_ = instance // Use instance variable
 	return nil
 }
-

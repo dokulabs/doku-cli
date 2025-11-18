@@ -20,11 +20,13 @@ Doku is a CLI tool that simplifies running and managing Docker-based services lo
 - 💪 **Resource control** - Set CPU and memory limits per service
 - 🏗️ **API Gateway pattern** - Internal-only services for microservices architecture
 - 🔐 **Environment management** - Secure environment variable handling with masking
-- 📋 **Service catalog** - Curated collection of popular development services
+- 📋 **Service catalog** - Curated collection of 24+ popular development services
 - 🔄 **Full lifecycle management** - Start, stop, restart, and remove services with ease
 - 🧩 **Multi-container services** - Deploy complex services with multiple containers
 - 🔗 **Dependency management** - Automatic installation of service dependencies
 - 🔌 **Port mapping** - Map container ports to host for direct access via localhost
+- 🐳 **Custom projects** - Build and run from your own Dockerfiles with `--path` flag
+- ⚡ **Dynamic configuration** - Update environment variables without rebuilding containers
 
 ## Quick Start
 
@@ -106,6 +108,44 @@ doku install rabbitmq --port 5672 --port 15672
 
 # Install as internal service (no external access)
 doku install redis --internal
+```
+
+### Install Custom Projects
+
+Run your own applications from Dockerfiles:
+
+```bash
+# Install a custom frontend application
+doku install frontend --path=./my-frontend-app
+
+# Install backend as internal service
+doku install api --path=./backend --internal --port 4000
+
+# Install with environment variables
+doku install myapp --path=./myapp \
+  --env DATABASE_URL=postgresql://postgres@postgres:5432/mydb \
+  --env API_KEY=secret123 \
+  --port 8080
+```
+
+**📖 See the complete guide:** [Custom Projects Guide](CUSTOM_PROJECTS_GUIDE.md)
+
+### Manage Environment Variables
+
+Update configuration dynamically without rebuilding:
+
+```bash
+# View environment variables
+doku env frontend
+
+# Set new variables
+doku env set frontend API_KEY=newsecret DEBUG=true
+
+# Auto-restart after changes
+doku env set frontend API_KEY=newsecret --restart
+
+# Remove variables
+doku env unset frontend OLD_KEY
 ```
 
 ### Manage Services
@@ -269,27 +309,32 @@ DATABASE_URL=postgresql://postgres@postgres-14.doku.local:5432
 View and export environment variables configured for services:
 
 ```bash
-# View environment variables (sensitive values masked)
-$ doku env postgres-14
+# View environment variables (sensitive values masked by default)
+$ doku env postgres
 
-Environment Variables: postgres-14
+Environment Variables for postgres
 ==================================================
 
-  POSTGRES_DB=myapp
-  POSTGRES_PASSWORD=po***es (masked)
-  POSTGRES_USER=postgres
+🔒 Sensitive values are masked. Use --show-values to display actual values.
 
-# Show actual values
-doku env postgres-14 --raw
+  POSTGRES_DB = myapp
+  POSTGRES_PASSWORD 🔐 = po***rd
+  POSTGRES_USER = postgres
+
+Tip: Use 'doku env postgres --show-values' to see actual values
+Tip: Use 'doku env postgres --export' for shell export format
+
+# Show actual values (unmask sensitive data)
+doku env postgres --show-values
 
 # Export format for shell sourcing
-doku env postgres-14 --export --raw > .env
+doku env postgres --export > postgres.env
 
-# Or source directly
-eval $(doku env postgres-14 --export --raw)
+# Export with actual values
+doku env postgres --export --show-values > postgres.env
 
-# JSON format for scripts
-doku env postgres-14 --json
+# Source directly into your shell
+eval $(doku env postgres --export --show-values)
 ```
 
 ### Port Mapping
@@ -482,10 +527,13 @@ doku init --domain mydev.local
 | `doku catalog update` | Update catalog from GitHub |
 | **Service Management** | |
 | `doku install <service>` | Install a service from catalog |
+| `doku install <name> --path=<dir>` | Install a custom project from Dockerfile |
 | `doku list` | List all running services |
 | `doku list --all` | List all services (including stopped) |
 | `doku info <service>` | Show detailed service information |
 | `doku env <service>` | Show environment variables |
+| `doku env set <service> KEY=VALUE` | Set environment variables |
+| `doku env unset <service> KEY` | Remove environment variables |
 | `doku start <service>` | Start a stopped service |
 | `doku stop <service>` | Stop a running service |
 | `doku restart <service>` | Restart a service |
@@ -505,6 +553,7 @@ doku init --domain mydev.local
 
 ### Install Flags
 
+- `--path` - Path to project directory with Dockerfile (for custom projects)
 - `--name, -n` - Custom instance name
 - `--env, -e` - Environment variables (KEY=VALUE)
 - `--memory` - Memory limit (e.g., 512m, 1g)
@@ -633,6 +682,14 @@ MIT License - see [LICENSE](LICENSE) for details.
 - ✅ Configuration file mounting from catalog
 - ✅ Container startup order management
 - ✅ Dependency-aware removal (keeps dependencies)
+
+**Custom Projects & Dynamic Configuration (Phase 4 Complete!):**
+- ✅ Custom project installation with `--path` flag
+- ✅ Automatic Dockerfile build and run
+- ✅ Dynamic environment variable management
+- ✅ `doku env set` command for updating variables
+- ✅ `doku env unset` command for removing variables
+- ✅ Auto-restart option for environment changes
 
 **Installation & Distribution:**
 - ✅ One-line installation via curl/wget
