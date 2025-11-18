@@ -535,6 +535,19 @@ func installCustomProject(serviceName string) error {
 		domain = "doku.local"
 	}
 
+	// Prompt for custom domain if not internal and not using --yes
+	if !installInternal && !installYes && mainPort > 0 {
+		fmt.Println()
+		domainPrompt := &survey.Input{
+			Message: "Domain for this service:",
+			Default: domain,
+			Help:    "The domain where this service will be accessible (e.g., doku.local, myapp.local)",
+		}
+		if err := survey.AskOne(domainPrompt, &domain); err != nil {
+			return err
+		}
+	}
+
 	// Display information
 	fmt.Println()
 	color.Cyan("Installing custom project: %s", instanceName)
@@ -577,6 +590,7 @@ func installCustomProject(serviceName string) error {
 		Port:        mainPort,
 		Ports:       additionalPorts,
 		Environment: envOverrides,
+		Domain:      domain,
 		Internal:    installInternal,
 	}
 

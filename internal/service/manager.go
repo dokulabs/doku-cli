@@ -28,9 +28,43 @@ func NewManager(dockerClient *docker.Client, configMgr *config.Manager) *Manager
 	}
 }
 
-// List returns all service instances
+// List returns all service instances (including custom projects)
 func (m *Manager) List() ([]*types.Instance, error) {
-	return m.configMgr.ListInstances()
+	// Get catalog-based instances
+	instances, err := m.configMgr.ListInstances()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get custom projects and convert to instances
+	cfg, err := m.configMgr.Get()
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert projects to instances for display
+	for _, project := range cfg.Projects {
+		instance := &types.Instance{
+			Name:          project.Name,
+			ServiceType:   "custom-project",
+			Version:       "",
+			ContainerName: project.ContainerName,
+			ContainerID:   project.ContainerID,
+			Status:        project.Status,
+			URL:           project.URL,
+			CreatedAt:     project.CreatedAt,
+			Environment:   project.Environment,
+			Network: types.NetworkConfig{
+				InternalPort: project.Port,
+			},
+			Traefik: types.TraefikInstanceConfig{
+				Enabled: project.URL != "",
+			},
+		}
+		instances = append(instances, instance)
+	}
+
+	return instances, nil
 }
 
 // Get retrieves a specific instance
