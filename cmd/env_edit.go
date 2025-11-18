@@ -158,23 +158,41 @@ func runEnvEdit(cmd *cobra.Command, args []string) error {
 			color.Green("✓ Environment variables saved")
 			fmt.Println()
 
-			// Ask if user wants to restart the service
-			restart := false
+			// Ask if user wants to recreate the service to apply changes
+			color.Yellow("⚠️  Environment variables require container recreation to take effect")
+			fmt.Println()
+			recreate := false
 			prompt := &survey.Confirm{
-				Message: "Restart the service to apply changes?",
+				Message: "Recreate the container to apply changes? (stop, remove, rebuild, start)",
 				Default: true,
 			}
-			if err := survey.AskOne(prompt, &restart); err != nil {
+			if err := survey.AskOne(prompt, &recreate); err != nil {
 				return err
 			}
 
-			if restart {
+			if recreate {
 				fmt.Println()
-				color.Cyan("Restarting %s...", serviceName)
-				if err := projectMgr.Restart(serviceName); err != nil {
-					return fmt.Errorf("failed to restart service: %w", err)
+				color.Cyan("Recreating container to apply environment changes...")
+				fmt.Println()
+
+				// Simply run the project again (which will remove old container and create new one)
+				runOpts := project.RunOptions{
+					Name:   serviceName,
+					Build:  false, // Don't rebuild image
+					Detach: true,
 				}
-				color.Green("✓ Service restarted successfully")
+				if err := projectMgr.Run(runOpts); err != nil {
+					return fmt.Errorf("failed to recreate container: %w", err)
+				}
+
+				fmt.Println()
+				color.Green("✓ Container recreated successfully with new environment variables")
+				fmt.Println()
+			} else {
+				fmt.Println()
+				color.Yellow("⚠️  Changes saved but not applied.")
+				color.Yellow("    To apply: doku stop %s && doku start %s won't work", serviceName, serviceName)
+				color.Yellow("    You need to: doku remove %s && doku install %s --path=...", serviceName, serviceName)
 				fmt.Println()
 			}
 
