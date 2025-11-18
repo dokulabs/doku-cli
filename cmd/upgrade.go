@@ -17,12 +17,14 @@ import (
 )
 
 const (
-	githubAPIURL = "https://api.github.com/repos/dokulabs/doku-cli/releases/latest"
-	repoURL      = "https://github.com/dokulabs/doku-cli"
+	githubAPIURL      = "https://api.github.com/repos/dokulabs/doku-cli/releases/latest"
+	githubAllReleases = "https://api.github.com/repos/dokulabs/doku-cli/releases"
+	repoURL           = "https://github.com/dokulabs/doku-cli"
 )
 
 var (
-	upgradeForce bool
+	upgradeForce      bool
+	upgradePrerelease bool
 )
 
 type GitHubRelease struct {
@@ -45,13 +47,15 @@ This command will:
   • Replace the current binary with the new version
   • Verify the installation
 
-Use --force to skip confirmation prompt.`,
+Use --force to skip confirmation prompt.
+Use --prerelease to include alpha/beta versions.`,
 	RunE: runUpgrade,
 }
 
 func init() {
 	selfCmd.AddCommand(upgradeCmd)
 	upgradeCmd.Flags().BoolVarP(&upgradeForce, "force", "f", false, "Force upgrade without confirmation")
+	upgradeCmd.Flags().BoolVarP(&upgradePrerelease, "prerelease", "p", false, "Include pre-release versions (alpha, beta, rc)")
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) error {
@@ -86,15 +90,23 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Check for latest version
-	fmt.Println("Checking for latest version...")
+	if upgradePrerelease {
+		fmt.Println("Checking for latest version (including pre-releases)...")
+	} else {
+		fmt.Println("Checking for latest version...")
+	}
 
-	release, err := getLatestRelease()
+	release, err := getLatestRelease(upgradePrerelease)
 	if err != nil {
 		return fmt.Errorf("failed to check for updates: %w", err)
 	}
 
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
-	fmt.Printf("Latest version:  %s\n", color.GreenString(latestVersion))
+	if upgradePrerelease {
+		fmt.Printf("Latest version:  %s (pre-release)\n", color.GreenString(latestVersion))
+	} else {
+		fmt.Printf("Latest version:  %s\n", color.GreenString(latestVersion))
+	}
 	fmt.Println()
 
 	// Compare versions
@@ -215,8 +227,18 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func getLatestRelease() (*GitHubRelease, error) {
-	resp, err := http.Get(githubAPIURL)
+func getLatestRelease(includePrerelease bool) (*GitHubRelease, error) {
+	var apiURL string
+
+	if includePrerelease {
+		// Fetch all releases (including pre-releases) and get the first one
+		apiURL = githubAllReleases
+	} else {
+		// Fetch only the latest stable release
+		apiURL = githubAPIURL
+	}
+
+	resp, err := http.Get(apiURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch release info: %w", err)
 	}
@@ -226,12 +248,27 @@ func getLatestRelease() (*GitHubRelease, error) {
 		return nil, fmt.Errorf("GitHub API returned status: %s", resp.Status)
 	}
 
-	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, fmt.Errorf("failed to parse release info: %w", err)
-	}
+	if includePrerelease {
+		// Parse array of releases and return the first one
+		var releases []GitHubRelease
+		if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+			return nil, fmt.Errorf("failed to parse release info: %w", err)
+		}
 
-	return &release, nil
+		if len(releases) == 0 {
+			return nil, fmt.Errorf("no releases found")
+		}
+
+		return &releases[0], nil
+	} else {
+		// Parse single release object
+		var release GitHubRelease
+		if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+			return nil, fmt.Errorf("failed to parse release info: %w", err)
+		}
+
+		return &release, nil
+	}
 }
 
 func downloadBinary(url string) (string, error) {
