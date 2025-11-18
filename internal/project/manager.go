@@ -128,7 +128,7 @@ func (m *Manager) Add(opts AddOptions) (*types.Project, error) {
 		Path:          absPath,
 		Dockerfile:    dockerfilePath,
 		Status:        types.StatusStopped,
-		ContainerName: fmt.Sprintf("doku-project-%s", projectName),
+		ContainerName: fmt.Sprintf("doku-%s", projectName),
 		URL:           url,
 		Port:          opts.Port,
 		CreatedAt:     time.Now(),

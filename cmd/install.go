@@ -536,7 +536,7 @@ func installCustomProject(serviceName string) error {
 	}
 
 	// Prompt for custom domain if not internal and not using --yes
-	if !installInternal && !installYes && mainPort > 0 {
+	if !installInternal && !installYes {
 		fmt.Println()
 		domainPrompt := &survey.Input{
 			Message: "Domain for this service:",
