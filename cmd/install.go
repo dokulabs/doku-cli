@@ -12,6 +12,7 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/config"
+	"github.com/dokulabs/doku-cli/internal/dns"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/internal/project"
 	"github.com/dokulabs/doku-cli/internal/service"
@@ -679,6 +680,20 @@ func installCustomProject(serviceName string) error {
 	}
 	color.Green("✓ Container started")
 	fmt.Println()
+
+	// Add DNS entry for external services
+	if !installInternal && proj.URL != "" {
+		// Extract subdomain from URL (e.g., "https://ui.doku.local" -> "ui.doku.local")
+		subdomain := strings.TrimPrefix(proj.URL, protocol+"://")
+		subdomain = strings.TrimPrefix(subdomain, "https://")
+		subdomain = strings.TrimPrefix(subdomain, "http://")
+
+		dnsMgr := dns.NewManager()
+		if err := dnsMgr.AddSingleEntry("127.0.0.1", subdomain); err != nil {
+			color.Yellow("⚠️  Warning: Failed to add DNS entry: %v", err)
+			color.Yellow("   You may need to manually add: 127.0.0.1 %s to /etc/hosts", subdomain)
+		}
+	}
 
 	// Success message
 	color.Green("✓ Successfully installed %s", instanceName)

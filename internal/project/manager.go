@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dokulabs/doku-cli/internal/config"
+	"github.com/dokulabs/doku-cli/internal/dns"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/pkg/types"
 )
@@ -441,6 +442,19 @@ func (m *Manager) Remove(name string, removeImage bool) error {
 		if err := m.docker.ImageRemove(imageTag, true); err != nil {
 			// Don't fail if image doesn't exist
 			fmt.Printf("Warning: failed to remove image: %v\n", err)
+		}
+	}
+
+	// Remove DNS entry if project has a URL
+	if project.URL != "" {
+		// Extract subdomain from URL (e.g., "https://ui.doku.local" -> "ui.doku.local")
+		subdomain := strings.TrimPrefix(project.URL, "https://")
+		subdomain = strings.TrimPrefix(subdomain, "http://")
+
+		dnsMgr := dns.NewManager()
+		if err := dnsMgr.RemoveSingleEntry(subdomain); err != nil {
+			// Only show warning, don't fail the removal
+			fmt.Printf("Warning: failed to remove DNS entry: %v\n", err)
 		}
 	}
 
