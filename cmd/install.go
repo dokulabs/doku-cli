@@ -26,7 +26,7 @@ var (
 	installYes                bool
 	installInternal           bool
 	installSkipDeps           bool
-	installDisableAutoInstall bool // When true, prompts before installing dependencies
+	installDisableAutoInstall bool   // When true, prompts before installing dependencies
 	installPath               string // Path to custom project with Dockerfile
 )
 
@@ -572,12 +572,12 @@ func installCustomProject(serviceName string) error {
 	// Step 1: Add project
 	color.Cyan("Step 1/3: Adding project...")
 	addOpts := project.AddOptions{
-		ProjectPath:  installPath,
-		Name:         instanceName,
-		Port:         mainPort,
-		Ports:        additionalPorts,
-		Environment:  envOverrides,
-		Internal:     installInternal,
+		ProjectPath: installPath,
+		Name:        instanceName,
+		Port:        mainPort,
+		Ports:       additionalPorts,
+		Environment: envOverrides,
+		Internal:    installInternal,
 	}
 
 	proj, err := projectMgr.Add(addOpts)
