@@ -568,20 +568,24 @@ func installCustomProject(serviceName string) error {
 	if protocol == "" {
 		protocol = "https"
 	}
-	domain := cfg.Preferences.Domain
-	if domain == "" {
-		domain = "doku.local"
+	baseDomain := cfg.Preferences.Domain
+	if baseDomain == "" {
+		baseDomain = "doku.local"
 	}
 
-	// Prompt for custom domain if not internal and not using --yes
+	// Construct default full subdomain
+	defaultSubdomain := fmt.Sprintf("%s.%s", instanceName, baseDomain)
+	fullSubdomain := defaultSubdomain
+
+	// Prompt for custom subdomain if not internal and not using --yes
 	if !installInternal && !installYes {
 		fmt.Println()
-		domainPrompt := &survey.Input{
-			Message: "Domain for this service:",
-			Default: domain,
-			Help:    "The domain where this service will be accessible (e.g., doku.local, myapp.local)",
+		subdomainPrompt := &survey.Input{
+			Message: "Full subdomain for this service:",
+			Default: defaultSubdomain,
+			Help:    "The complete subdomain (e.g., app.doku.local, ui.myapp.local). You can edit the entire value.",
 		}
-		if err := survey.AskOne(domainPrompt, &domain); err != nil {
+		if err := survey.AskOne(subdomainPrompt, &fullSubdomain); err != nil {
 			return err
 		}
 	}
@@ -595,7 +599,7 @@ func installCustomProject(serviceName string) error {
 	} else {
 		fmt.Println("Mode: Public (Traefik enabled)")
 		if mainPort > 0 {
-			fmt.Printf("URL: %s://%s.%s\n", protocol, instanceName, domain)
+			fmt.Printf("URL: %s://%s\n", protocol, fullSubdomain)
 		}
 	}
 	if mainPort > 0 {
@@ -628,7 +632,7 @@ func installCustomProject(serviceName string) error {
 		Port:        mainPort,
 		Ports:       additionalPorts,
 		Environment: envOverrides,
-		Domain:      domain,
+		Domain:      fullSubdomain,
 		Internal:    installInternal,
 	}
 

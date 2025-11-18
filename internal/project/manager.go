@@ -108,6 +108,7 @@ func (m *Manager) Add(opts AddOptions) (*types.Project, error) {
 
 	// Determine domain
 	domain := opts.Domain
+	isFullSubdomain := opts.Domain != "" // If explicitly provided, it's a full subdomain
 	if domain == "" {
 		cfg, err := m.configMgr.Get()
 		if err != nil {
@@ -119,7 +120,13 @@ func (m *Manager) Add(opts AddOptions) (*types.Project, error) {
 	// Create URL if not internal
 	url := ""
 	if !opts.Internal && opts.Port > 0 {
-		url = fmt.Sprintf("https://%s.%s", projectName, domain)
+		if isFullSubdomain {
+			// Domain was explicitly provided as full subdomain
+			url = fmt.Sprintf("https://%s", domain)
+		} else {
+			// Domain from config (base domain), construct full subdomain
+			url = fmt.Sprintf("https://%s.%s", projectName, domain)
+		}
 	}
 
 	// Create project object

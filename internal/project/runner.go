@@ -155,8 +155,10 @@ func (r *Runner) Run(opts ContainerRunOptions) error {
 
 	// Remove existing container if present
 	if err := r.docker.ContainerRemove(opts.Project.ContainerName, true); err != nil {
-		// Log warning but continue - it's ok if container doesn't exist
-		fmt.Printf("Warning: failed to remove existing container: %v\n", err)
+		// Only show warning if it's not a "container not found" error
+		if !strings.Contains(err.Error(), "No such container") {
+			fmt.Printf("Warning: failed to remove existing container: %v\n", err)
+		}
 	}
 
 	// Create container
