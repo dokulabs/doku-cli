@@ -1,7 +1,11 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -518,6 +522,40 @@ func installCustomProject(serviceName string) error {
 		}
 	}
 
+	// If no port specified and not internal, try to detect from Dockerfile
+	if mainPort == 0 && !installInternal {
+		// Determine Dockerfile path
+		dockerfilePath := filepath.Join(installPath, "Dockerfile")
+
+		// Try to detect ports from Dockerfile
+		detectedPorts, err := detectPortsFromDockerfile(dockerfilePath)
+		if err != nil {
+			// If Dockerfile doesn't exist or can't be read, prompt for port
+			color.Yellow("Could not read Dockerfile: %v", err)
+			detectedPorts = []int{} // Empty, will prompt
+		}
+
+		// Prompt user to select/enter port
+		if !installYes {
+			port, err := promptForPort(detectedPorts)
+			if err != nil {
+				return fmt.Errorf("failed to get port: %w", err)
+			}
+			mainPort = port
+
+			if len(detectedPorts) == 1 {
+				fmt.Printf("Using detected port: %d\n", mainPort)
+			}
+		} else if len(detectedPorts) == 1 {
+			// With --yes flag, use the single detected port automatically
+			mainPort = detectedPorts[0]
+			fmt.Printf("Auto-detected port: %d\n", mainPort)
+		} else {
+			// With --yes and no/multiple ports, we need a port for external services
+			return fmt.Errorf("--port is required when using --yes flag (detected ports: %v)", detectedPorts)
+		}
+	}
+
 	// Determine instance name
 	instanceName := installName
 	if instanceName == "" {
@@ -663,4 +701,108 @@ func installCustomProject(serviceName string) error {
 	fmt.Println()
 
 	return nil
+}
+
+// detectPortsFromDockerfile parses a Dockerfile and extracts EXPOSE directives
+func detectPortsFromDockerfile(dockerfilePath string) ([]int, error) {
+	file, err := os.Open(dockerfilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Dockerfile: %w", err)
+	}
+	defer file.Close()
+
+	var ports []int
+	exposeRegex := regexp.MustCompile(`(?i)^\s*EXPOSE\s+(.+)$`)
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Skip comments
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+
+		// Check for EXPOSE directive
+		if matches := exposeRegex.FindStringSubmatch(line); matches != nil {
+			// Extract port numbers from the EXPOSE line
+			portsStr := strings.TrimSpace(matches[1])
+
+			// Split by whitespace to handle multiple ports on one line
+			portFields := strings.Fields(portsStr)
+
+			for _, portField := range portFields {
+				// Remove protocol suffix if present (e.g., "80/tcp" -> "80")
+				portStr := strings.Split(portField, "/")[0]
+
+				// Parse the port number
+				if port, err := strconv.Atoi(portStr); err == nil {
+					ports = append(ports, port)
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading Dockerfile: %w", err)
+	}
+
+	return ports, nil
+}
+
+// promptForPort asks the user to select or enter a port
+func promptForPort(detectedPorts []int) (int, error) {
+	if len(detectedPorts) == 1 {
+		// Only one port detected, use it
+		return detectedPorts[0], nil
+	}
+
+	fmt.Println()
+
+	if len(detectedPorts) > 1 {
+		// Multiple ports detected, ask which one is the main port
+		color.Yellow("Multiple ports detected in Dockerfile:")
+		for _, port := range detectedPorts {
+			fmt.Printf("  • %d\n", port)
+		}
+		fmt.Println()
+
+		portOptions := make([]string, len(detectedPorts))
+		for i, port := range detectedPorts {
+			portOptions[i] = fmt.Sprintf("%d", port)
+		}
+
+		var selectedPort string
+		prompt := &survey.Select{
+			Message: "Select the main port for external access:",
+			Options: portOptions,
+			Default: portOptions[0],
+		}
+		if err := survey.AskOne(prompt, &selectedPort); err != nil {
+			return 0, err
+		}
+
+		port, _ := strconv.Atoi(selectedPort)
+		return port, nil
+	}
+
+	// No ports detected, ask user to enter manually
+	color.Yellow("No EXPOSE directive found in Dockerfile")
+	fmt.Println()
+
+	var portStr string
+	prompt := &survey.Input{
+		Message: "Enter the port your application listens on:",
+		Help:    "This is the port inside the container (e.g., 3000, 8080)",
+	}
+	if err := survey.AskOne(prompt, &portStr, survey.WithValidator(survey.Required)); err != nil {
+		return 0, err
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 || port > 65535 {
+		return 0, fmt.Errorf("invalid port number: %s", portStr)
+	}
+
+	return port, nil
 }
