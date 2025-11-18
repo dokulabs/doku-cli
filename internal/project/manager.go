@@ -32,6 +32,7 @@ type AddOptions struct {
 	Dependencies []string          // Service dependencies (e.g., postgres:16)
 	Domain       string            // Custom domain (optional)
 	Internal     bool              // Internal only (no Traefik)
+	Replace      bool              // Replace existing project if it exists
 }
 
 // BuildOptions contains options for building a project
@@ -87,8 +88,17 @@ func (m *Manager) Add(opts AddOptions) (*types.Project, error) {
 	}
 
 	// Check if project already exists
-	if _, err := m.Get(projectName); err == nil {
-		return nil, fmt.Errorf("project '%s' already exists", projectName)
+	_, err = m.Get(projectName)
+	if err == nil {
+		// Project exists
+		if !opts.Replace {
+			return nil, fmt.Errorf("project '%s' already exists", projectName)
+		}
+		// Remove existing project before adding new one
+		if err := m.Remove(projectName, false); err != nil {
+			return nil, fmt.Errorf("failed to remove existing project: %w", err)
+		}
+		fmt.Printf("Removed existing project '%s'\n", projectName)
 	}
 
 	// Determine Dockerfile path

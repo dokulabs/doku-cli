@@ -624,8 +624,42 @@ func installCustomProject(serviceName string) error {
 	}
 	fmt.Println()
 
+	// Check if project already exists
+	existingProj, _ := projectMgr.Get(instanceName)
+	replaceExisting := false
+
+	if existingProj != nil {
+		if !installYes {
+			// Prompt to replace
+			fmt.Println()
+			color.Yellow("⚠️  Project '%s' already exists", instanceName)
+			fmt.Println()
+			fmt.Printf("Existing project details:\n")
+			fmt.Printf("  Path: %s\n", existingProj.Path)
+			fmt.Printf("  URL: %s\n", existingProj.URL)
+			fmt.Printf("  Status: %s\n", existingProj.Status)
+			fmt.Println()
+
+			prompt := &survey.Confirm{
+				Message: "Do you want to remove the existing project and install the new one?",
+				Default: false,
+			}
+			if err := survey.AskOne(prompt, &replaceExisting); err != nil {
+				return err
+			}
+
+			if !replaceExisting {
+				color.Yellow("Installation cancelled")
+				return nil
+			}
+		} else {
+			// With --yes flag, don't replace automatically - fail instead
+			return fmt.Errorf("project '%s' already exists. Remove it first with 'doku remove %s'", instanceName, instanceName)
+		}
+	}
+
 	// Confirm if not using --yes
-	if !installYes {
+	if !installYes && existingProj == nil {
 		confirm := false
 		prompt := &survey.Confirm{
 			Message: "Proceed with installation?",
@@ -652,6 +686,7 @@ func installCustomProject(serviceName string) error {
 		Environment: envOverrides,
 		Domain:      fullSubdomain,
 		Internal:    installInternal,
+		Replace:     replaceExisting,
 	}
 
 	proj, err := projectMgr.Add(addOpts)
