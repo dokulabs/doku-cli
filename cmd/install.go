@@ -513,6 +513,23 @@ func installCustomProject(serviceName string) error {
 
 	// Parse environment variables
 	envOverrides := make(map[string]string)
+
+	// First, try to load from .env.doku file
+	envDokuPath := filepath.Join(installPath, ".env.doku")
+	if project.FileExists(envDokuPath) {
+		color.Cyan("→ Loading environment variables from .env.doku")
+		fileEnv, err := project.LoadEnvFile(envDokuPath)
+		if err != nil {
+			color.Yellow("⚠️  Warning: Failed to load .env.doku: %v", err)
+		} else {
+			for key, value := range fileEnv {
+				envOverrides[key] = value
+			}
+			fmt.Printf("   Loaded %d variables from .env.doku\n", len(fileEnv))
+		}
+	}
+
+	// Then, override with command-line env vars (these take precedence)
 	for _, env := range installEnv {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) == 2 {
