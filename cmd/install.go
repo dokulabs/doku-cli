@@ -480,6 +480,18 @@ func parsePortMappings(portStrings []string, defaultPort int) (map[string]string
 	return mappings, nil
 }
 
+// determineDockerfile checks for Dockerfile.local first, then falls back to Dockerfile
+func determineDockerfile(projectPath string) string {
+	// Check for Dockerfile.local first
+	localDockerfile := filepath.Join(projectPath, "Dockerfile.local")
+	if _, err := os.Stat(localDockerfile); err == nil {
+		return localDockerfile
+	}
+
+	// Fall back to Dockerfile
+	return filepath.Join(projectPath, "Dockerfile")
+}
+
 // installCustomProject installs a custom project from a Dockerfile
 func installCustomProject(serviceName string) error {
 	// Create managers
@@ -523,11 +535,15 @@ func installCustomProject(serviceName string) error {
 		}
 	}
 
+	// Determine which Dockerfile to use (Dockerfile.local or Dockerfile)
+	dockerfilePath := determineDockerfile(installPath)
+	dockerfileName := filepath.Base(dockerfilePath)
+	if dockerfileName == "Dockerfile.local" {
+		color.Cyan("→ Using %s for local development", dockerfileName)
+	}
+
 	// If no port specified and not internal, try to detect from Dockerfile
 	if mainPort == 0 && !installInternal {
-		// Determine Dockerfile path
-		dockerfilePath := filepath.Join(installPath, "Dockerfile")
-
 		// Try to detect ports from Dockerfile
 		detectedPorts, err := detectPortsFromDockerfile(dockerfilePath)
 		if err != nil {
@@ -630,6 +646,7 @@ func installCustomProject(serviceName string) error {
 	addOpts := project.AddOptions{
 		ProjectPath: installPath,
 		Name:        instanceName,
+		Dockerfile:  dockerfilePath,
 		Port:        mainPort,
 		Ports:       additionalPorts,
 		Environment: envOverrides,
