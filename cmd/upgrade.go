@@ -202,24 +202,40 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to replace binary: %w", err)
 	}
 
+	// Ensure the binary is executable
+	if err := os.Chmod(execPath, 0755); err != nil {
+		color.Yellow("⚠️  Warning: Could not set executable permissions: %v", err)
+	}
+
 	// Remove backup
 	os.Remove(backupPath)
 
-	// Verify the installation
+	// Give the filesystem a moment to sync
 	fmt.Println()
 	fmt.Println("Verifying installation...")
+	fmt.Println()
 
 	verifyCmd := exec.Command(execPath, "version")
-	output, err := verifyCmd.Output()
+	output, err := verifyCmd.CombinedOutput()
 	if err != nil {
-		color.Yellow("⚠️  Could not verify installation")
+		color.Yellow("⚠️  Verification failed")
+		fmt.Printf("Error: %v\n", err)
+		if len(output) > 0 {
+			fmt.Printf("Output: %s\n", string(output))
+		}
+		fmt.Println()
+		color.Yellow("The binary was installed, but could not be verified.")
+		color.Yellow("Please run 'doku version' manually to check.")
+		fmt.Println()
 	} else {
 		fmt.Println(string(output))
+		fmt.Println()
+		color.Green("✓ Verification successful!")
 	}
 
 	// Success
 	fmt.Println()
-	color.Green("✓ Upgrade completed successfully!")
+	color.Green("✓ Upgrade completed!")
 	fmt.Println()
 	color.New(color.Bold).Printf("Doku has been upgraded to version %s\n", latestVersion)
 	fmt.Println()
