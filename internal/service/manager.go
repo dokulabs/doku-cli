@@ -67,9 +67,45 @@ func (m *Manager) List() ([]*types.Instance, error) {
 	return instances, nil
 }
 
-// Get retrieves a specific instance
+// Get retrieves a specific instance (checks both catalog services and custom projects)
 func (m *Manager) Get(instanceName string) (*types.Instance, error) {
-	return m.configMgr.GetInstance(instanceName)
+	// First check catalog services (Instances)
+	instance, err := m.configMgr.GetInstance(instanceName)
+	if err == nil {
+		return instance, nil
+	}
+
+	// If not found in Instances, check custom projects
+	cfg, err := m.configMgr.Get()
+	if err != nil {
+		return nil, err
+	}
+
+	project, exists := cfg.Projects[instanceName]
+	if !exists {
+		return nil, fmt.Errorf("service '%s' not found", instanceName)
+	}
+
+	// Convert Project to Instance for consistent handling
+	instance = &types.Instance{
+		Name:          project.Name,
+		ServiceType:   "custom-project",
+		Version:       "",
+		ContainerName: project.ContainerName,
+		ContainerID:   project.ContainerID,
+		Status:        project.Status,
+		URL:           project.URL,
+		CreatedAt:     project.CreatedAt,
+		Environment:   project.Environment,
+		Network: types.NetworkConfig{
+			InternalPort: project.Port,
+		},
+		Traefik: types.TraefikInstanceConfig{
+			Enabled: project.URL != "",
+		},
+	}
+
+	return instance, nil
 }
 
 // Start starts a stopped service instance
@@ -206,10 +242,14 @@ func (m *Manager) RestartWithPort(instanceName string, newPort int) error {
 
 // Remove removes a service instance (stops and deletes)
 func (m *Manager) Remove(instanceName string, force bool, removeVolumes bool) error {
-	instance, err := m.configMgr.GetInstance(instanceName)
+	// Use Get() which checks both Instances and Projects
+	instance, err := m.Get(instanceName)
 	if err != nil {
-		return fmt.Errorf("instance not found: %w", err)
+		return err
 	}
+
+	// Check if it's a custom project
+	isCustomProject := instance.ServiceType == "custom-project"
 
 	// Handle multi-container services
 	if instance.IsMultiContainer {
@@ -263,6 +303,9 @@ func (m *Manager) Remove(instanceName string, force bool, removeVolumes bool) er
 	}
 
 	// Remove from config - always do this to clean up state
+	if isCustomProject {
+		return m.configMgr.RemoveProject(instanceName)
+	}
 	return m.configMgr.RemoveInstance(instanceName)
 }
 
