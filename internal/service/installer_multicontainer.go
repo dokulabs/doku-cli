@@ -148,10 +148,22 @@ func (i *Installer) installMultiContainer(
 			env = i.mergeEnvironment(env, monitoringEnv)
 		}
 
-		// Pull image
-		if err := i.dockerClient.ImagePull(containerSpec.Image); err != nil {
+		// Check if image exists locally first
+		imageExists, err := i.dockerClient.ImageExists(containerSpec.Image)
+		if err != nil {
 			i.cleanupMultiContainerInstall(instance)
-			return nil, fmt.Errorf("failed to pull image %s: %w", containerSpec.Image, err)
+			return nil, fmt.Errorf("failed to check image existence for %s: %w", containerSpec.Image, err)
+		}
+
+		if imageExists {
+			fmt.Printf("  Using cached image %s\n", containerSpec.Image)
+		} else {
+			// Pull image if not in cache
+			fmt.Printf("  Pulling image %s...\n", containerSpec.Image)
+			if err := i.dockerClient.ImagePull(containerSpec.Image); err != nil {
+				i.cleanupMultiContainerInstall(instance)
+				return nil, fmt.Errorf("failed to pull image %s: %w", containerSpec.Image, err)
+			}
 		}
 
 		// Determine the port for this container (for Traefik routing)
@@ -517,9 +529,20 @@ func (i *Installer) runInitContainers(spec *types.ServiceSpec, instanceName stri
 		// Run container with --rm flag (auto-remove after completion)
 		containerName := fmt.Sprintf("doku-%s-init-%s", instanceName, initContainer.Name)
 
-		// Pull image first
-		if err := i.dockerClient.ImagePull(initContainer.Image); err != nil {
-			return fmt.Errorf("failed to pull init container image %s: %w", initContainer.Image, err)
+		// Check if image exists locally first
+		imageExists, err := i.dockerClient.ImageExists(initContainer.Image)
+		if err != nil {
+			return fmt.Errorf("failed to check image existence for init container %s: %w", initContainer.Image, err)
+		}
+
+		if imageExists {
+			fmt.Printf("  Using cached init image %s\n", initContainer.Image)
+		} else {
+			// Pull image if not in cache
+			fmt.Printf("  Pulling init image %s...\n", initContainer.Image)
+			if err := i.dockerClient.ImagePull(initContainer.Image); err != nil {
+				return fmt.Errorf("failed to pull init container image %s: %w", initContainer.Image, err)
+			}
 		}
 
 		// Create and start the container

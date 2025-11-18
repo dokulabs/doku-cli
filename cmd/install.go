@@ -601,16 +601,28 @@ func installCustomProject(serviceName string) error {
 	color.Green("✓ Project added")
 	fmt.Println()
 
-	// Step 2: Build project
-	color.Cyan("Step 2/3: Building Docker image...")
-	buildOpts := project.BuildOptions{
-		Name: instanceName,
+	// Step 2: Build project (only if image doesn't exist)
+	color.Cyan("Step 2/3: Checking Docker image...")
+	imageTag := fmt.Sprintf("doku-project-%s:latest", instanceName)
+	imageExists, err := dockerClient.ImageExists(imageTag)
+	if err != nil {
+		return fmt.Errorf("failed to check image existence: %w", err)
 	}
 
-	if err := projectMgr.Build(buildOpts); err != nil {
-		return fmt.Errorf("failed to build project: %w", err)
+	if imageExists {
+		fmt.Printf("Using cached image %s\n", imageTag)
+		color.Green("✓ Using cached build")
+	} else {
+		fmt.Println("Building Docker image...")
+		buildOpts := project.BuildOptions{
+			Name: instanceName,
+		}
+
+		if err := projectMgr.Build(buildOpts); err != nil {
+			return fmt.Errorf("failed to build project: %w", err)
+		}
+		color.Green("✓ Build completed")
 	}
-	color.Green("✓ Build completed")
 	fmt.Println()
 
 	// Step 3: Run project

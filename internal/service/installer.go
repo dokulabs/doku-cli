@@ -183,10 +183,20 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 	// Create container name
 	containerName := docker.GenerateContainerName(instanceName)
 
-	// Pull image
-	fmt.Printf("Pulling image %s...\n", spec.Image)
-	if err := i.dockerClient.ImagePull(spec.Image); err != nil {
-		return nil, fmt.Errorf("failed to pull image: %w", err)
+	// Check if image exists locally first
+	imageExists, err := i.dockerClient.ImageExists(spec.Image)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check image existence: %w", err)
+	}
+
+	if imageExists {
+		fmt.Printf("Using cached image %s\n", spec.Image)
+	} else {
+		// Pull image if not in cache
+		fmt.Printf("Pulling image %s...\n", spec.Image)
+		if err := i.dockerClient.ImagePull(spec.Image); err != nil {
+			return nil, fmt.Errorf("failed to pull image: %w", err)
+		}
 	}
 
 	// Create container configuration
