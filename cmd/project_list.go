@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"text/tabwriter"
 
@@ -77,7 +78,7 @@ func projectListRun(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Create a new tabwriter
-	w := tabwriter.NewWriter(color.Output, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 
 	// Print header
 	headerColor := color.New(color.Bold, color.FgCyan)
@@ -94,8 +95,8 @@ func projectListRun(cmd *cobra.Command, args []string) error {
 		// Format name
 		name := proj.Name
 
-		// Format status with color
-		status := formatProjectStatus(proj.Status)
+		// Format status (plain text to fix alignment)
+		status := formatProjectStatusText(proj.Status)
 
 		// Format port
 		port := "-"
@@ -148,5 +149,18 @@ func formatProjectStatus(status types.ServiceStatus) string {
 		return color.RedString("Failed")
 	default:
 		return color.New(color.Faint).Sprint("Unknown")
+	}
+}
+
+func formatProjectStatusText(status types.ServiceStatus) string {
+	switch status {
+	case types.StatusRunning:
+		return "Up"
+	case types.StatusStopped:
+		return "Exited"
+	case types.StatusFailed:
+		return "Failed"
+	default:
+		return "Unknown"
 	}
 }

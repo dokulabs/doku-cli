@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -222,7 +223,7 @@ func displayInstances(instances []*types.Instance, protocol, domain string, verb
 	fmt.Println()
 
 	// Create a new tabwriter
-	w := tabwriter.NewWriter(color.Output, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 
 	// Print header
 	headerColor := color.New(color.Bold, color.FgCyan)
@@ -254,8 +255,8 @@ func displayInstances(instances []*types.Instance, protocol, domain string, verb
 			version = "v" + version
 		}
 
-		// Format status with color
-		status := formatStatusForTable(instance.Status)
+		// Format status (plain text for now to fix alignment)
+		status := formatStatusTextForTable(instance.Status)
 
 		// Format ports
 		ports := formatPortsForTable(instance)
@@ -462,6 +463,19 @@ func formatStatusForTable(status types.ServiceStatus) string {
 		return color.RedString("Failed")
 	default:
 		return color.New(color.Faint).Sprint("Unknown")
+	}
+}
+
+func formatStatusTextForTable(status types.ServiceStatus) string {
+	switch status {
+	case types.StatusRunning:
+		return "Up"
+	case types.StatusStopped:
+		return "Exited"
+	case types.StatusFailed:
+		return "Failed"
+	default:
+		return "Unknown"
 	}
 }
 
