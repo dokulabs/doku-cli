@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -45,7 +46,111 @@ func NewBuilder(dockerClient *docker.Client) *Builder {
 }
 
 // Build builds a Docker image from a Dockerfile
+// Uses docker buildx for BuildKit support with SSH forwarding
 func (b *Builder) Build(opts DockerBuildOptions) (string, error) {
+	// Check if Dockerfile uses SSH mounts
+	usesSSH, err := b.dockerfileUsesSSH(opts.DockerfilePath)
+	if err != nil {
+		return "", err
+	}
+
+	// If Dockerfile uses SSH mounts, use buildx CLI for better BuildKit support
+	if usesSSH {
+		return b.buildWithBuildx(opts)
+	}
+
+	// Otherwise use standard SDK build
+	return b.buildWithSDK(opts)
+}
+
+// dockerfileUsesSSH checks if Dockerfile contains SSH mount directives
+func (b *Builder) dockerfileUsesSSH(dockerfilePath string) (bool, error) {
+	content, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		return false, err
+	}
+	return strings.Contains(string(content), "--mount=type=ssh"), nil
+}
+
+// buildWithBuildx uses docker buildx CLI for builds requiring SSH
+func (b *Builder) buildWithBuildx(opts DockerBuildOptions) (string, error) {
+	cyan := color.New(color.FgCyan)
+	cyan.Println("→ Using BuildKit with SSH support")
+
+	// Validate Dockerfile
+	if err := b.ValidateDockerfile(opts.DockerfilePath); err != nil {
+		return "", err
+	}
+
+	// Build absolute paths
+	absContextPath, err := filepath.Abs(opts.ContextPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve context path: %w", err)
+	}
+
+	absDockerfilePath, err := filepath.Abs(opts.DockerfilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve Dockerfile path: %w", err)
+	}
+
+	// Prepare buildx command
+	args := []string{"buildx", "build"}
+
+	// Add tags
+	for _, tag := range opts.Tags {
+		args = append(args, "-t", tag)
+	}
+
+	// Add dockerfile
+	args = append(args, "-f", absDockerfilePath)
+
+	// Add build args
+	for k, v := range opts.BuildArgs {
+		if v != nil {
+			args = append(args, "--build-arg", fmt.Sprintf("%s=%s", k, *v))
+		}
+	}
+
+	// Add SSH forwarding
+	args = append(args, "--ssh", "default")
+
+	// Add no-cache if requested
+	if opts.NoCache {
+		args = append(args, "--no-cache")
+	}
+
+	// Add pull if requested
+	if opts.Pull {
+		args = append(args, "--pull")
+	}
+
+	// Add load flag to load image into docker
+	args = append(args, "--load")
+
+	// Add context
+	args = append(args, absContextPath)
+
+	// Execute buildx
+	cmd := exec.Command("docker", args...)
+	output, err := cmd.CombinedOutput()
+
+	fmt.Println()
+	fmt.Println(string(output))
+
+	if err != nil {
+		return "", fmt.Errorf("buildx failed: %w\nOutput: %s", err, string(output))
+	}
+
+	// Extract image ID from tags
+	if len(opts.Tags) > 0 {
+		return opts.Tags[0], nil
+	}
+
+	return "built", nil
+}
+
+// buildWithSDK builds using the Docker SDK (legacy/non-SSH builds)
+func (b *Builder) buildWithSDK(opts DockerBuildOptions) (string, error) {
 	// Validate Dockerfile
 	if err := b.ValidateDockerfile(opts.DockerfilePath); err != nil {
 		return "", err
