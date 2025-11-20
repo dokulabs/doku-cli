@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -45,7 +44,6 @@ This command will:
   • Check for the latest version available
   • Download the appropriate binary for your platform
   • Replace the current binary with the new version
-  • Verify the installation
 
 Use --force to skip confirmation prompt.
 Use --prerelease to include alpha/beta versions.`,
@@ -210,34 +208,15 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	// Remove backup
 	os.Remove(backupPath)
 
-	// Give the filesystem a moment to sync
-	fmt.Println()
-	fmt.Println("Verifying installation...")
-	fmt.Println()
-
-	verifyCmd := exec.Command(execPath, "version")
-	output, err := verifyCmd.CombinedOutput()
-	if err != nil {
-		color.Yellow("⚠️  Verification failed")
-		fmt.Printf("Error: %v\n", err)
-		if len(output) > 0 {
-			fmt.Printf("Output: %s\n", string(output))
-		}
-		fmt.Println()
-		color.Yellow("The binary was installed, but could not be verified.")
-		color.Yellow("Please run 'doku version' manually to check.")
-		fmt.Println()
-	} else {
-		fmt.Println(string(output))
-		fmt.Println()
-		color.Green("✓ Verification successful!")
-	}
-
 	// Success
 	fmt.Println()
 	color.Green("✓ Upgrade completed!")
 	fmt.Println()
 	color.New(color.Bold).Printf("Doku has been upgraded to version %s\n", latestVersion)
+	fmt.Println()
+
+	// Note about verification
+	color.New(color.Faint).Println("Run 'doku version' to verify the installation.")
 	fmt.Println()
 
 	return nil
