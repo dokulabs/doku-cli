@@ -51,17 +51,31 @@ func (b *Builder) Build(opts DockerBuildOptions) (string, error) {
 		return "", err
 	}
 
+	// Make paths absolute to avoid any relative path issues
+	absContextPath, err := filepath.Abs(opts.ContextPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve context path: %w", err)
+	}
+
+	absDockerfilePath, err := filepath.Abs(opts.DockerfilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve Dockerfile path: %w", err)
+	}
+
 	// Create build context
-	buildContext, err := b.createBuildContext(opts.ContextPath, opts.DockerfilePath)
+	buildContext, err := b.createBuildContext(absContextPath, absDockerfilePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create build context: %w", err)
 	}
 	defer buildContext.Close()
 
 	// Get relative Dockerfile path for Docker build
-	relDockerfile, err := filepath.Rel(opts.ContextPath, opts.DockerfilePath)
+	relDockerfile, err := filepath.Rel(absContextPath, absDockerfilePath)
 	if err != nil {
-		relDockerfile = "Dockerfile"
+		// If we can't get a relative path, try using just the basename
+		// This happens when paths are on different volumes or other edge cases
+		relDockerfile = filepath.Base(absDockerfilePath)
+		fmt.Printf("Warning: Could not determine relative Dockerfile path, using: %s\n", relDockerfile)
 	}
 
 	// Prepare build options
