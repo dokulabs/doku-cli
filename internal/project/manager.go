@@ -37,10 +37,11 @@ type AddOptions struct {
 
 // BuildOptions contains options for building a project
 type BuildOptions struct {
-	Name    string // Project name
-	NoCache bool   // Build without cache
-	Pull    bool   // Pull base image before building
-	Tag     string // Custom tag
+	Name      string            // Project name
+	NoCache   bool              // Build without cache
+	Pull      bool              // Pull base image before building
+	Tag       string            // Custom tag
+	BuildArgs map[string]string // Build arguments (e.g., from .env.doku)
 }
 
 // RunOptions contains options for running a project
@@ -213,6 +214,13 @@ func (m *Manager) Build(opts BuildOptions) error {
 		imageTag = fmt.Sprintf("doku-project-%s:latest", project.Name)
 	}
 
+	// Convert build args to Docker format (map[string]*string)
+	dockerBuildArgs := make(map[string]*string)
+	for k, v := range opts.BuildArgs {
+		value := v
+		dockerBuildArgs[k] = &value
+	}
+
 	// Build options
 	buildOpts := DockerBuildOptions{
 		ContextPath:    project.Path,
@@ -220,6 +228,7 @@ func (m *Manager) Build(opts BuildOptions) error {
 		Tags:           []string{imageTag},
 		NoCache:        opts.NoCache,
 		Pull:           opts.Pull,
+		BuildArgs:      dockerBuildArgs,
 	}
 
 	// Execute build
@@ -512,6 +521,11 @@ func (m *Manager) getContainerStatus(containerName string) (types.ServiceStatus,
 func (m *Manager) imageExists(imageTag string) bool {
 	exists, err := m.docker.ImageExists(imageTag)
 	return err == nil && exists
+}
+
+// ImageExists checks if a Docker image exists (public method)
+func (m *Manager) ImageExists(imageTag string) bool {
+	return m.imageExists(imageTag)
 }
 
 // validateProjectName validates a project name

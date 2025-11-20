@@ -33,6 +33,7 @@ var (
 	installSkipDeps           bool
 	installDisableAutoInstall bool   // When true, prompts before installing dependencies
 	installPath               string // Path to custom project with Dockerfile
+	installBuild              bool   // Force rebuild even if cached image exists
 )
 
 var installCmd = &cobra.Command{
@@ -55,7 +56,8 @@ Examples:
   # Custom projects with Dockerfile
   doku install frontend --path=./frontend  # Install from custom Dockerfile
   doku install api --path=./api --internal  # Install as internal service
-  doku install worker --path=./worker --env QUEUE_URL=redis://redis:6379`,
+  doku install worker --path=./worker --env QUEUE_URL=redis://redis:6379
+  doku install ui --path=./ui --build  # Force rebuild even if cached image exists`,
 	Args: cobra.ExactArgs(1),
 	RunE: runInstall,
 }
@@ -74,6 +76,7 @@ func init() {
 	installCmd.Flags().BoolVar(&installSkipDeps, "skip-deps", false, "Skip dependency resolution and installation")
 	installCmd.Flags().BoolVar(&installDisableAutoInstall, "no-auto-install-deps", false, "Prompt before installing dependencies (interactive mode)")
 	installCmd.Flags().StringVar(&installPath, "path", "", "Path to custom project with Dockerfile")
+	installCmd.Flags().BoolVar(&installBuild, "build", false, "Force rebuild even if cached image exists")
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
@@ -713,27 +716,33 @@ func installCustomProject(serviceName string) error {
 	color.Green("✓ Project added")
 	fmt.Println()
 
-	// Step 2: Build project (only if image doesn't exist)
+	// Step 2: Build project (build if forced with --build flag OR image doesn't exist)
 	color.Cyan("Step 2/3: Checking Docker image...")
 	imageTag := fmt.Sprintf("doku-project-%s:latest", instanceName)
-	imageExists, err := dockerClient.ImageExists(imageTag)
-	if err != nil {
-		return fmt.Errorf("failed to check image existence: %w", err)
-	}
+	imageExists := projectMgr.ImageExists(imageTag)
 
-	if imageExists {
-		fmt.Printf("Using cached image %s\n", imageTag)
-		color.Green("✓ Using cached build")
-	} else {
-		fmt.Println("Building Docker image...")
+	// Build if forced with --build flag OR image doesn't exist
+	if installBuild || !imageExists {
+		if installBuild && imageExists {
+			fmt.Println("Rebuilding Docker image (--build flag)...")
+		} else {
+			fmt.Println("Building Docker image...")
+		}
+
+		// Build with environment variables from .env.doku (already loaded in envOverrides)
 		buildOpts := project.BuildOptions{
-			Name: instanceName,
+			Name:      instanceName,
+			NoCache:   installBuild, // Skip cache if --build flag
+			BuildArgs: envOverrides,  // Pass .env.doku vars as build args
 		}
 
 		if err := projectMgr.Build(buildOpts); err != nil {
 			return fmt.Errorf("failed to build project: %w", err)
 		}
 		color.Green("✓ Build completed")
+	} else {
+		fmt.Printf("Using cached image %s\n", imageTag)
+		color.Green("✓ Using cached build")
 	}
 	fmt.Println()
 

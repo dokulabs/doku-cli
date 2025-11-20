@@ -69,43 +69,53 @@ func runEnvEdit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("service '%s' not found. Use 'doku list' to see installed services", serviceName)
 	}
 
-	// Check if it's a custom project (only custom projects support env editing for now)
-	if instance.ServiceType != "custom-project" {
-		return fmt.Errorf("environment editing is currently only supported for custom projects")
-	}
+	// Get environment variables based on service type
+	var envVars map[string]string
+	isCustomProject := instance.ServiceType == "custom-project"
 
-	// Get project
-	projectMgr, err := project.NewManager(dockerClient, cfgMgr)
-	if err != nil {
-		return fmt.Errorf("failed to create project manager: %w", err)
-	}
+	if isCustomProject {
+		// Get project for custom projects
+		projectMgr, err := project.NewManager(dockerClient, cfgMgr)
+		if err != nil {
+			return fmt.Errorf("failed to create project manager: %w", err)
+		}
 
-	proj, err := projectMgr.Get(serviceName)
-	if err != nil {
-		return fmt.Errorf("failed to get project: %w", err)
-	}
+		proj, err := projectMgr.Get(serviceName)
+		if err != nil {
+			return fmt.Errorf("failed to get project: %w", err)
+		}
 
-	// Clone environment variables for editing
-	if proj.Environment == nil {
-		proj.Environment = make(map[string]string)
+		if proj.Environment == nil {
+			proj.Environment = make(map[string]string)
+		}
+		envVars = proj.Environment
+	} else {
+		// Get environment variables for catalog services
+		if instance.Environment == nil {
+			instance.Environment = make(map[string]string)
+		}
+		envVars = instance.Environment
 	}
 
 	fmt.Println()
 	color.New(color.Bold, color.FgCyan).Printf("Editing Environment Variables for %s\n", serviceName)
+	if !isCustomProject {
+		color.New(color.Faint).Printf("(%s - %s)\n", instance.ServiceType, instance.Version)
+	}
 	fmt.Println(strings.Repeat("=", len(serviceName)+35))
 	fmt.Println()
 
 	// Interactive editing loop
 	modified := false
 	for {
-		action, err := promptEditAction(proj.Environment)
+		action, err := promptEditAction(envVars)
 		if err != nil {
 			return err
 		}
 
 		switch action {
 		case "add":
-			if err := addEnvVariable(proj.Environment); err != nil {
+			if err := addEnvVariable(envVars); err != nil {
 				color.Red("Error: %v", err)
 				fmt.Println()
 				continue
@@ -113,12 +123,12 @@ func runEnvEdit(cmd *cobra.Command, args []string) error {
 			modified = true
 
 		case "edit":
-			if len(proj.Environment) == 0 {
+			if len(envVars) == 0 {
 				color.Yellow("No environment variables to edit")
 				fmt.Println()
 				continue
 			}
-			if err := editEnvVariable(proj.Environment); err != nil {
+			if err := editEnvVariable(envVars); err != nil {
 				color.Red("Error: %v", err)
 				fmt.Println()
 				continue
@@ -126,12 +136,12 @@ func runEnvEdit(cmd *cobra.Command, args []string) error {
 			modified = true
 
 		case "delete":
-			if len(proj.Environment) == 0 {
+			if len(envVars) == 0 {
 				color.Yellow("No environment variables to delete")
 				fmt.Println()
 				continue
 			}
-			if err := deleteEnvVariable(proj.Environment); err != nil {
+			if err := deleteEnvVariable(envVars); err != nil {
 				color.Red("Error: %v", err)
 				fmt.Println()
 				continue
@@ -147,8 +157,16 @@ func runEnvEdit(cmd *cobra.Command, args []string) error {
 
 			// Save changes
 			if err := cfgMgr.Update(func(c *types.Config) error {
-				if p, exists := c.Projects[serviceName]; exists {
-					p.Environment = proj.Environment
+				if isCustomProject {
+					// Save to Projects section
+					if p, exists := c.Projects[serviceName]; exists {
+						p.Environment = envVars
+					}
+				} else {
+					// Save to Instances section (catalog services)
+					if inst, exists := c.Instances[serviceName]; exists {
+						inst.Environment = envVars
+					}
 				}
 				return nil
 			}); err != nil {
@@ -163,7 +181,7 @@ func runEnvEdit(cmd *cobra.Command, args []string) error {
 			fmt.Println()
 			recreate := false
 			prompt := &survey.Confirm{
-				Message: "Recreate the container to apply changes? (stop, remove, rebuild, start)",
+				Message: "Recreate the container to apply changes?",
 				Default: true,
 			}
 			if err := survey.AskOne(prompt, &recreate); err != nil {
@@ -175,14 +193,26 @@ func runEnvEdit(cmd *cobra.Command, args []string) error {
 				color.Cyan("Recreating container to apply environment changes...")
 				fmt.Println()
 
-				// Simply run the project again (which will remove old container and create new one)
-				runOpts := project.RunOptions{
-					Name:   serviceName,
-					Build:  false, // Don't rebuild image
-					Detach: true,
-				}
-				if err := projectMgr.Run(runOpts); err != nil {
-					return fmt.Errorf("failed to recreate container: %w", err)
+				if isCustomProject {
+					// For custom projects, use project manager
+					projectMgr, err := project.NewManager(dockerClient, cfgMgr)
+					if err != nil {
+						return fmt.Errorf("failed to create project manager: %w", err)
+					}
+
+					runOpts := project.RunOptions{
+						Name:   serviceName,
+						Build:  false, // Don't rebuild image
+						Detach: true,
+					}
+					if err := projectMgr.Run(runOpts); err != nil {
+						return fmt.Errorf("failed to recreate container: %w", err)
+					}
+				} else {
+					// For catalog services, use service manager
+					if err := serviceMgr.Recreate(serviceName); err != nil {
+						return fmt.Errorf("failed to recreate container: %w", err)
+					}
 				}
 
 				fmt.Println()
@@ -191,8 +221,8 @@ func runEnvEdit(cmd *cobra.Command, args []string) error {
 			} else {
 				fmt.Println()
 				color.Yellow("⚠️  Changes saved but not applied.")
-				color.Yellow("    To apply: doku stop %s && doku start %s won't work", serviceName, serviceName)
-				color.Yellow("    You need to: doku remove %s && doku install %s --path=...", serviceName, serviceName)
+				color.Yellow("    To apply changes, restart the service:")
+				color.Yellow("    doku restart %s", serviceName)
 				fmt.Println()
 			}
 

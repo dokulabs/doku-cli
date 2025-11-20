@@ -191,6 +191,64 @@ func (m *Manager) Restart(instanceName string) error {
 	return m.configMgr.UpdateInstance(instanceName, instance)
 }
 
+// Recreate recreates a service container to apply configuration changes (like environment variables)
+// This stops, removes, and recreates the container with the current configuration from the config file
+func (m *Manager) Recreate(instanceName string) error {
+	instance, err := m.configMgr.GetInstance(instanceName)
+	if err != nil {
+		return fmt.Errorf("instance not found: %w", err)
+	}
+
+	// Multi-container services not supported yet
+	if instance.IsMultiContainer {
+		return fmt.Errorf("recreation not supported for multi-container services yet")
+	}
+
+	// Get container info to preserve configuration
+	containerInfo, err := m.dockerClient.ContainerInspect(instance.ContainerName)
+	if err != nil {
+		return fmt.Errorf("failed to inspect container: %w", err)
+	}
+
+	// Update environment variables from instance configuration
+	// Merge instance.Environment with existing container environment
+	if instance.Environment != nil && len(instance.Environment) > 0 {
+		// Build new environment array from instance configuration
+		envArray := []string{}
+		for key, value := range instance.Environment {
+			envArray = append(envArray, fmt.Sprintf("%s=%s", key, value))
+		}
+		// Update the container info with new environment
+		containerInfo.Config.Env = envArray
+	}
+
+	// Stop the container
+	timeout := 10
+	if err := m.dockerClient.ContainerStop(instance.ContainerName, &timeout); err != nil {
+		return fmt.Errorf("failed to stop container: %w", err)
+	}
+
+	// Disconnect from network
+	networkMgr := docker.NewNetworkManager(m.dockerClient)
+	if err := networkMgr.DisconnectContainer("doku-network", instance.ContainerName, true); err != nil {
+		fmt.Printf("Warning: failed to disconnect from network: %v\n", err)
+	}
+
+	// Remove the container (but preserve volumes)
+	if err := m.dockerClient.ContainerRemove(instance.ContainerName, false); err != nil {
+		return fmt.Errorf("failed to remove container: %w", err)
+	}
+
+	// Recreate the container with updated configuration
+	if err := m.recreateContainer(instance, &containerInfo); err != nil {
+		return fmt.Errorf("failed to recreate container: %w", err)
+	}
+
+	// Update config
+	instance.UpdatedAt = time.Now()
+	return m.configMgr.UpdateInstance(instanceName, instance)
+}
+
 // RestartWithPort restarts a service instance with a new host port mapping
 // This requires recreating the container since port mappings cannot be changed on existing containers
 func (m *Manager) RestartWithPort(instanceName string, newPort int) error {

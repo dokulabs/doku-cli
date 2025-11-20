@@ -2,6 +2,7 @@ package project
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -119,30 +120,45 @@ func (b *Builder) createBuildContext(contextPath, dockerfilePath string) (io.Rea
 	tw := tar.NewWriter(buf)
 	defer tw.Close()
 
+	// Load .dockerignore patterns if file exists
+	dockerignorePath := filepath.Join(contextPath, ".dockerignore")
+	ignorePatterns := []string{}
+	if _, err := os.Stat(dockerignorePath); err == nil {
+		patterns, err := b.loadDockerignore(dockerignorePath)
+		if err != nil {
+			// Don't fail the build, just warn
+			fmt.Printf("Warning: Failed to load .dockerignore: %v\n", err)
+		} else {
+			ignorePatterns = patterns
+		}
+	}
+
+	// Directories to skip during build context creation (fallback if no .dockerignore)
+	skipDirs := map[string]bool{
+		".git":         true,
+		"node_modules": true,
+		"target":       true,  // Java/Maven
+		"build":        true,  // Common build output
+		"dist":         true,  // Distribution files
+		"vendor":       true,  // Go/PHP dependencies
+		".next":        true,  // Next.js build
+		".nuxt":        true,  // Nuxt.js build
+		"venv":         true,  // Python virtual env
+		".venv":        true,  // Python virtual env
+		"__pycache__":  true,  // Python cache
+		".pytest_cache": true, // Pytest cache
+		"coverage":     true,  // Test coverage
+		".tox":         true,  // Python tox
+		"tmp":          true,  // Temporary files
+		"temp":         true,  // Temporary files
+		"logs":         true,  // Log files
+		".cache":       true,  // Cache directories
+	}
+
 	// Walk through project directory
 	err := filepath.Walk(contextPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
-		}
-
-		// Skip .git directory
-		if info.IsDir() && info.Name() == ".git" {
-			return filepath.SkipDir
-		}
-
-		// Skip node_modules directory
-		if info.IsDir() && info.Name() == "node_modules" {
-			return filepath.SkipDir
-		}
-
-		// Skip target directory (Java/Maven)
-		if info.IsDir() && info.Name() == "target" {
-			return filepath.SkipDir
-		}
-
-		// Skip build directories
-		if info.IsDir() && (info.Name() == "build" || info.Name() == "dist") {
-			return filepath.SkipDir
 		}
 
 		// Get relative path
@@ -156,6 +172,24 @@ func (b *Builder) createBuildContext(contextPath, dockerfilePath string) (io.Rea
 			return nil
 		}
 
+		// Check against .dockerignore patterns if they exist
+		if len(ignorePatterns) > 0 && b.shouldIgnore(relPath, ignorePatterns) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Fallback: Skip common build/dependency directories if no .dockerignore
+		if len(ignorePatterns) == 0 && info.IsDir() && skipDirs[info.Name()] {
+			return filepath.SkipDir
+		}
+
+		// Check path length and provide helpful error
+		if len(relPath) > 255 {
+			return fmt.Errorf("path too long (>255 chars): %s\nConsider using .dockerignore to exclude this file/directory", relPath)
+		}
+
 		// Create tar header
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {
@@ -163,9 +197,16 @@ func (b *Builder) createBuildContext(contextPath, dockerfilePath string) (io.Rea
 		}
 		header.Name = relPath
 
+		// Use PAX format for better compatibility with long paths
+		header.Format = tar.FormatPAX
+
 		// Write header
 		if err := tw.WriteHeader(header); err != nil {
-			return err
+			// Provide more context on tar errors
+			if strings.Contains(err.Error(), "too long") {
+				return fmt.Errorf("tar path too long: %s\nPath: %s\nTip: Add this directory to .dockerignore", err.Error(), relPath)
+			}
+			return fmt.Errorf("failed to write tar header for %s: %w", relPath, err)
 		}
 
 		// Write file content if not a directory
@@ -292,4 +333,66 @@ func (b *Builder) GetImageInfo(imageTag string) (types.ImageInspect, error) {
 	}
 
 	return inspect, nil
+}
+
+// loadDockerignore loads patterns from a .dockerignore file
+func (b *Builder) loadDockerignore(dockerignorePath string) ([]string, error) {
+	file, err := os.Open(dockerignorePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var patterns []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		patterns = append(patterns, line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return patterns, nil
+}
+
+// shouldIgnore checks if a path should be ignored based on .dockerignore patterns
+func (b *Builder) shouldIgnore(relPath string, patterns []string) bool {
+	// Normalize path separators
+	relPath = filepath.ToSlash(relPath)
+
+	for _, pattern := range patterns {
+		// Normalize pattern
+		pattern = filepath.ToSlash(pattern)
+
+		// Simple pattern matching (supports * and ** wildcards)
+		matched, err := filepath.Match(pattern, relPath)
+		if err == nil && matched {
+			return true
+		}
+
+		// Check if pattern matches a prefix (directory)
+		if strings.HasSuffix(pattern, "/") {
+			if strings.HasPrefix(relPath, pattern) {
+				return true
+			}
+		}
+
+		// Check if it's a directory match
+		if strings.HasPrefix(relPath, pattern+"/") {
+			return true
+		}
+
+		// Exact match
+		if relPath == pattern {
+			return true
+		}
+	}
+
+	return false
 }
