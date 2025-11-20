@@ -80,14 +80,13 @@ func projectListRun(cmd *cobra.Command, args []string) error {
 	// Create a new tabwriter
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 
-	// Print header
-	headerColor := color.New(color.Bold, color.FgCyan)
+	// Print header - plain text without colors for proper alignment
 	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-		headerColor.Sprint("NAME"),
-		headerColor.Sprint("STATUS"),
-		headerColor.Sprint("PORT"),
-		headerColor.Sprint("DEPENDENCIES"),
-		headerColor.Sprint("URL"),
+		"NAME",
+		"STATUS",
+		"PORT",
+		"DEPENDENCIES",
+		"URL",
 	)
 
 	// Print each project

@@ -225,15 +225,14 @@ func displayInstances(instances []*types.Instance, protocol, domain string, verb
 	// Create a new tabwriter
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 
-	// Print header
-	headerColor := color.New(color.Bold, color.FgCyan)
+	// Print header - plain text without colors for proper alignment
 	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-		headerColor.Sprint("NAME"),
-		headerColor.Sprint("SERVICE"),
-		headerColor.Sprint("VERSION"),
-		headerColor.Sprint("STATUS"),
-		headerColor.Sprint("PORTS"),
-		headerColor.Sprint("URL"),
+		"NAME",
+		"SERVICE",
+		"VERSION",
+		"STATUS",
+		"PORTS",
+		"URL",
 	)
 
 	// Print each instance
@@ -255,7 +254,7 @@ func displayInstances(instances []*types.Instance, protocol, domain string, verb
 			version = "v" + version
 		}
 
-		// Format status (plain text for now to fix alignment)
+		// Format status (plain text to fix alignment)
 		status := formatStatusTextForTable(instance.Status)
 
 		// Format ports
