@@ -703,10 +703,15 @@ func installCustomProject(serviceName string) error {
 
 	// Step 1: Add project
 	color.Cyan("Step 1/3: Adding project...")
+
+	// Get just the Dockerfile name (relative to project path)
+	// The AddOptions expects either a relative path or just the filename
+	dockerfileRelative := filepath.Base(dockerfilePath)
+
 	addOpts := project.AddOptions{
 		ProjectPath: installPath,
 		Name:        instanceName,
-		Dockerfile:  dockerfilePath,
+		Dockerfile:  dockerfileRelative,
 		Port:        mainPort,
 		Ports:       additionalPorts,
 		Environment: envOverrides,
