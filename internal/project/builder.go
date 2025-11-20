@@ -75,7 +75,6 @@ func (b *Builder) Build(opts DockerBuildOptions) (string, error) {
 		// If we can't get a relative path, try using just the basename
 		// This happens when paths are on different volumes or other edge cases
 		relDockerfile = filepath.Base(absDockerfilePath)
-		fmt.Printf("Warning: Could not determine relative Dockerfile path, using: %s\n", relDockerfile)
 	}
 
 	// Prepare build options
@@ -243,24 +242,33 @@ func (b *Builder) createBuildContext(contextPath, dockerfilePath string) (io.Rea
 		return nil, fmt.Errorf("failed to create tar archive: %w", err)
 	}
 
-	// Add Dockerfile if it's outside the context
-	if !strings.HasPrefix(dockerfilePath, contextPath) {
-		dockerfileContent, err := os.ReadFile(dockerfilePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read Dockerfile: %w", err)
-		}
+	// Always ensure Dockerfile is in the tar, even if:
+	// 1. It's outside the context, OR
+	// 2. It was excluded by .dockerignore
+	//
+	// We need to check if the Dockerfile is in the tar and add it if not
+	relDockerfile, err := filepath.Rel(contextPath, dockerfilePath)
+	if err != nil {
+		relDockerfile = filepath.Base(dockerfilePath)
+	}
 
-		header := &tar.Header{
-			Name: "Dockerfile",
-			Mode: 0644,
-			Size: int64(len(dockerfileContent)),
-		}
-		if err := tw.WriteHeader(header); err != nil {
-			return nil, err
-		}
-		if _, err := tw.Write(dockerfileContent); err != nil {
-			return nil, err
-		}
+	// Read and add the Dockerfile explicitly
+	dockerfileContent, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read Dockerfile: %w", err)
+	}
+
+	// Add Dockerfile to tar with its relative path
+	header := &tar.Header{
+		Name: relDockerfile,
+		Mode: 0644,
+		Size: int64(len(dockerfileContent)),
+	}
+	if err := tw.WriteHeader(header); err != nil {
+		return nil, fmt.Errorf("failed to write Dockerfile header: %w", err)
+	}
+	if _, err := tw.Write(dockerfileContent); err != nil {
+		return nil, fmt.Errorf("failed to write Dockerfile content: %w", err)
 	}
 
 	return io.NopCloser(bytes.NewReader(buf.Bytes())), nil

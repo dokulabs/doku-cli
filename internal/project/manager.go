@@ -102,19 +102,20 @@ func (m *Manager) Add(opts AddOptions) (*types.Project, error) {
 		fmt.Printf("Removed existing project '%s'\n", projectName)
 	}
 
-	// Determine Dockerfile path
-	dockerfilePath := opts.Dockerfile
-	if dockerfilePath == "" {
-		dockerfilePath = "Dockerfile"
+	// Determine Dockerfile path (keep it relative for storage)
+	dockerfileRelPath := opts.Dockerfile
+	if dockerfileRelPath == "" {
+		dockerfileRelPath = "Dockerfile"
 	}
 
-	// Make Dockerfile path absolute if relative
-	if !filepath.IsAbs(dockerfilePath) {
-		dockerfilePath = filepath.Join(absPath, dockerfilePath)
+	// Build absolute path for validation only
+	dockerfileAbsPath := dockerfileRelPath
+	if !filepath.IsAbs(dockerfileRelPath) {
+		dockerfileAbsPath = filepath.Join(absPath, dockerfileRelPath)
 	}
 
-	// Validate Dockerfile exists
-	if err := m.builder.ValidateDockerfile(dockerfilePath); err != nil {
+	// Validate Dockerfile exists using absolute path
+	if err := m.builder.ValidateDockerfile(dockerfileAbsPath); err != nil {
 		return nil, err
 	}
 
@@ -145,7 +146,7 @@ func (m *Manager) Add(opts AddOptions) (*types.Project, error) {
 	project := &types.Project{
 		Name:          projectName,
 		Path:          absPath,
-		Dockerfile:    dockerfilePath,
+		Dockerfile:    dockerfileRelPath, // Store relative path
 		Status:        types.StatusStopped,
 		ContainerName: fmt.Sprintf("doku-%s", projectName),
 		URL:           url,
@@ -203,8 +204,15 @@ func (m *Manager) Build(opts BuildOptions) error {
 		return err
 	}
 
+	// Build absolute Dockerfile path for validation
+	// project.Dockerfile is now stored as relative path
+	dockerfileAbsPath := project.Dockerfile
+	if !filepath.IsAbs(dockerfileAbsPath) {
+		dockerfileAbsPath = filepath.Join(project.Path, project.Dockerfile)
+	}
+
 	// Validate Dockerfile still exists
-	if err := m.builder.ValidateDockerfile(project.Dockerfile); err != nil {
+	if err := m.builder.ValidateDockerfile(dockerfileAbsPath); err != nil {
 		return err
 	}
 
@@ -221,10 +229,10 @@ func (m *Manager) Build(opts BuildOptions) error {
 		dockerBuildArgs[k] = &value
 	}
 
-	// Build options
+	// Build options - pass absolute Dockerfile path to builder
 	buildOpts := DockerBuildOptions{
 		ContextPath:    project.Path,
-		DockerfilePath: project.Dockerfile,
+		DockerfilePath: dockerfileAbsPath,
 		Tags:           []string{imageTag},
 		NoCache:        opts.NoCache,
 		Pull:           opts.Pull,
