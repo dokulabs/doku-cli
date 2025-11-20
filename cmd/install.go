@@ -740,11 +740,14 @@ func installCustomProject(serviceName string) error {
 			fmt.Println("Building Docker image...")
 		}
 
-		// Build with environment variables from .env.doku (already loaded in envOverrides)
+		// Build the Docker image
+		// Note: .env.doku vars are for runtime, not build time
+		// If you need build-time variables, declare them as ARG in Dockerfile
 		buildOpts := project.BuildOptions{
-			Name:      instanceName,
-			NoCache:   installBuild, // Skip cache if --build flag
-			BuildArgs: envOverrides, // Pass .env.doku vars as build args
+			Name:    instanceName,
+			NoCache: installBuild, // Skip cache if --build flag
+			// BuildArgs should only contain values declared as ARG in Dockerfile
+			// Runtime env vars (from .env.doku) are applied when container starts
 		}
 
 		if err := projectMgr.Build(buildOpts); err != nil {

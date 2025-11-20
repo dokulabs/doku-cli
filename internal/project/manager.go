@@ -41,7 +41,7 @@ type BuildOptions struct {
 	NoCache   bool              // Build without cache
 	Pull      bool              // Pull base image before building
 	Tag       string            // Custom tag
-	BuildArgs map[string]string // Build arguments (e.g., from .env.doku)
+	BuildArgs map[string]string // Build arguments for ARG directives in Dockerfile (NOT runtime env vars)
 }
 
 // RunOptions contains options for running a project

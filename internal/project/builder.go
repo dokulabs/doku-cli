@@ -46,14 +46,6 @@ func NewBuilder(dockerClient *docker.Client) *Builder {
 
 // Build builds a Docker image from a Dockerfile
 func (b *Builder) Build(opts DockerBuildOptions) (string, error) {
-	// Enable BuildKit for this build
-	// This is required for advanced Dockerfile features like:
-	// - RUN --mount=type=ssh (SSH agent forwarding)
-	// - RUN --mount=type=cache (build caching)
-	// - Multi-stage builds with better performance
-	cyan := color.New(color.FgCyan)
-	cyan.Println("→ Using BuildKit for advanced Docker features")
-
 	// Validate Dockerfile
 	if err := b.ValidateDockerfile(opts.DockerfilePath); err != nil {
 		return "", err
@@ -85,7 +77,10 @@ func (b *Builder) Build(opts DockerBuildOptions) (string, error) {
 		relDockerfile = filepath.Base(absDockerfilePath)
 	}
 
-	// Prepare build options with BuildKit support
+	// Prepare build options
+	// Note: BuildKit is controlled by the Docker daemon configuration
+	// If you need SSH mounts, ensure BuildKit is enabled in Docker Desktop settings
+	// or set DOCKER_BUILDKIT=1 before running doku commands
 	buildOpts := types.ImageBuildOptions{
 		Tags:       opts.Tags,
 		Dockerfile: relDockerfile,
@@ -93,16 +88,16 @@ func (b *Builder) Build(opts DockerBuildOptions) (string, error) {
 		Remove:     true,
 		PullParent: opts.Pull,
 		BuildArgs:  opts.BuildArgs,
-		// Enable BuildKit (version 2) for advanced features like SSH mounts
-		Version: types.BuilderBuildKit,
-		// SessionID enables features like SSH agent forwarding
-		// The actual SSH connection is handled by Docker/BuildKit
-		SessionID: "doku-build",
 	}
 
 	// Execute build
 	response, err := b.docker.ImageBuild(buildContext, buildOpts)
 	if err != nil {
+		errMsg := err.Error()
+		// Check for common BuildKit-related errors and provide helpful messages
+		if strings.Contains(errMsg, "--mount option requires BuildKit") {
+			return "", fmt.Errorf("BuildKit is required for SSH mounts.\n\nTo fix this:\n  1. Enable BuildKit in Docker Desktop (Settings → Features in development → Use Docker Buildx)\n  2. Or set environment variable: export DOCKER_BUILDKIT=1\n  3. Then try again\n\nOriginal error: %w", err)
+		}
 		return "", fmt.Errorf("failed to start build: %w", err)
 	}
 	defer response.Body.Close()
