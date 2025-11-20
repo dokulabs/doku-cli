@@ -135,24 +135,24 @@ func (b *Builder) createBuildContext(contextPath, dockerfilePath string) (io.Rea
 
 	// Directories to skip during build context creation (fallback if no .dockerignore)
 	skipDirs := map[string]bool{
-		".git":         true,
-		"node_modules": true,
-		"target":       true,  // Java/Maven
-		"build":        true,  // Common build output
-		"dist":         true,  // Distribution files
-		"vendor":       true,  // Go/PHP dependencies
-		".next":        true,  // Next.js build
-		".nuxt":        true,  // Nuxt.js build
-		"venv":         true,  // Python virtual env
-		".venv":        true,  // Python virtual env
-		"__pycache__":  true,  // Python cache
+		".git":          true,
+		"node_modules":  true,
+		"target":        true, // Java/Maven
+		"build":         true, // Common build output
+		"dist":          true, // Distribution files
+		"vendor":        true, // Go/PHP dependencies
+		".next":         true, // Next.js build
+		".nuxt":         true, // Nuxt.js build
+		"venv":          true, // Python virtual env
+		".venv":         true, // Python virtual env
+		"__pycache__":   true, // Python cache
 		".pytest_cache": true, // Pytest cache
-		"coverage":     true,  // Test coverage
-		".tox":         true,  // Python tox
-		"tmp":          true,  // Temporary files
-		"temp":         true,  // Temporary files
-		"logs":         true,  // Log files
-		".cache":       true,  // Cache directories
+		"coverage":      true, // Test coverage
+		".tox":          true, // Python tox
+		"tmp":           true, // Temporary files
+		"temp":          true, // Temporary files
+		"logs":          true, // Log files
+		".cache":        true, // Cache directories
 	}
 
 	// Walk through project directory

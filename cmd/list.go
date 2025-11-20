@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	dockerTypes "github.com/docker/docker/api/types"
@@ -213,6 +214,75 @@ func updateResourceUsage(ctx context.Context, dockerClient *docker.Client, insta
 }
 
 func displayInstances(instances []*types.Instance, protocol, domain string, verbose bool) {
+	if verbose {
+		displayInstancesVerbose(instances, protocol, domain)
+		return
+	}
+
+	fmt.Println()
+
+	// Create a new tabwriter
+	w := tabwriter.NewWriter(color.Output, 0, 0, 2, ' ', 0)
+
+	// Print header
+	headerColor := color.New(color.Bold, color.FgCyan)
+	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		headerColor.Sprint("NAME"),
+		headerColor.Sprint("SERVICE"),
+		headerColor.Sprint("VERSION"),
+		headerColor.Sprint("STATUS"),
+		headerColor.Sprint("PORTS"),
+		headerColor.Sprint("URL"),
+	)
+
+	// Print each instance
+	for _, instance := range instances {
+		// Format name
+		name := instance.Name
+
+		// Format service type
+		serviceType := instance.ServiceType
+		if instance.IsMultiContainer {
+			serviceType = fmt.Sprintf("%s (%d)", serviceType, len(instance.Containers))
+		}
+
+		// Format version
+		version := instance.Version
+		if version == "" {
+			version = "-"
+		} else {
+			version = "v" + version
+		}
+
+		// Format status with color
+		status := formatStatusForTable(instance.Status)
+
+		// Format ports
+		ports := formatPortsForTable(instance)
+
+		// Format URL
+		url := instance.URL
+		if url == "" {
+			url = "-"
+		}
+
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			name,
+			serviceType,
+			version,
+			status,
+			ports,
+			url,
+		)
+	}
+
+	w.Flush()
+	fmt.Println()
+	color.Cyan("Total: %d service(s)", len(instances))
+	fmt.Println()
+}
+
+func displayInstancesVerbose(instances []*types.Instance, protocol, domain string) {
 	fmt.Println()
 	color.New(color.Bold, color.FgCyan).Println("📋 Installed Services")
 	fmt.Println()
@@ -222,7 +292,7 @@ func displayInstances(instances []*types.Instance, protocol, domain string, verb
 			fmt.Println()
 		}
 
-		displayInstance(instance, protocol, domain, verbose)
+		displayInstance(instance, protocol, domain, true)
 	}
 
 	fmt.Println()
@@ -380,4 +450,47 @@ func getContainerStatusSymbol(status string) string {
 	default:
 		return color.New(color.Faint).Sprint("?")
 	}
+}
+
+func formatStatusForTable(status types.ServiceStatus) string {
+	switch status {
+	case types.StatusRunning:
+		return color.GreenString("Up")
+	case types.StatusStopped:
+		return color.YellowString("Exited")
+	case types.StatusFailed:
+		return color.RedString("Failed")
+	default:
+		return color.New(color.Faint).Sprint("Unknown")
+	}
+}
+
+func formatPortsForTable(instance *types.Instance) string {
+	ports := []string{}
+
+	// Collect port mappings
+	if len(instance.Network.PortMappings) > 0 {
+		for containerPort, hostPort := range instance.Network.PortMappings {
+			ports = append(ports, fmt.Sprintf("%s->%s", hostPort, containerPort))
+		}
+	} else if instance.Network.HostPort > 0 {
+		// Backward compatibility with old single port format
+		ports = append(ports, fmt.Sprintf("%d->%d", instance.Network.HostPort, instance.Network.InternalPort))
+	}
+
+	// If no port mappings but has internal port
+	if len(ports) == 0 && instance.Network.InternalPort > 0 {
+		ports = append(ports, fmt.Sprintf("%d/tcp", instance.Network.InternalPort))
+	}
+
+	if len(ports) == 0 {
+		return "-"
+	}
+
+	// Show first 2 ports, add ellipsis if more
+	if len(ports) > 2 {
+		return strings.Join(ports[:2], ", ") + "..."
+	}
+
+	return strings.Join(ports, ", ")
 }

@@ -733,7 +733,7 @@ func installCustomProject(serviceName string) error {
 		buildOpts := project.BuildOptions{
 			Name:      instanceName,
 			NoCache:   installBuild, // Skip cache if --build flag
-			BuildArgs: envOverrides,  // Pass .env.doku vars as build args
+			BuildArgs: envOverrides, // Pass .env.doku vars as build args
 		}
 
 		if err := projectMgr.Build(buildOpts); err != nil {

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
@@ -72,48 +73,80 @@ func projectListRun(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Display projects
-	fmt.Println()
-	fmt.Println("PROJECTS:")
+	// Display projects in tabular format
 	fmt.Println()
 
-	// Color helpers
-	green := color.New(color.FgGreen)
-	red := color.New(color.FgRed)
-	yellow := color.New(color.FgYellow)
-	gray := color.New(color.FgHiBlack)
-	cyan := color.New(color.FgCyan)
+	// Create a new tabwriter
+	w := tabwriter.NewWriter(color.Output, 0, 0, 2, ' ', 0)
 
+	// Print header
+	headerColor := color.New(color.Bold, color.FgCyan)
+	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+		headerColor.Sprint("NAME"),
+		headerColor.Sprint("STATUS"),
+		headerColor.Sprint("PORT"),
+		headerColor.Sprint("DEPENDENCIES"),
+		headerColor.Sprint("URL"),
+	)
+
+	// Print each project
 	for _, proj := range projects {
+		// Format name
+		name := proj.Name
+
 		// Format status with color
-		var statusStr string
-		switch proj.Status {
-		case types.StatusRunning:
-			statusStr = green.Sprint("● running")
-		case types.StatusStopped:
-			statusStr = gray.Sprint("○ stopped")
-		case types.StatusFailed:
-			statusStr = red.Sprint("✗ failed")
-		default:
-			statusStr = yellow.Sprint("? unknown")
-		}
+		status := formatProjectStatus(proj.Status)
 
-		// Print project info
-		fmt.Printf("  %s %-20s %s\n", statusStr, proj.Name, cyan.Sprint(proj.URL))
-
-		// Show additional info
+		// Format port
+		port := "-"
 		if proj.Port > 0 {
-			fmt.Printf("    Port: %d\n", proj.Port)
+			port = fmt.Sprintf("%d", proj.Port)
 		}
+
+		// Format dependencies
+		deps := "-"
 		if len(proj.Dependencies) > 0 {
-			fmt.Printf("    Dependencies: %s\n", strings.Join(proj.Dependencies, ", "))
+			if len(proj.Dependencies) > 2 {
+				deps = strings.Join(proj.Dependencies[:2], ", ") + "..."
+			} else {
+				deps = strings.Join(proj.Dependencies, ", ")
+			}
 		}
-		fmt.Println()
+
+		// Format URL
+		url := proj.URL
+		if url == "" {
+			url = "-"
+		}
+
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+			name,
+			status,
+			port,
+			deps,
+			url,
+		)
 	}
 
+	w.Flush()
+	fmt.Println()
+
 	// Show summary
-	cyan.Printf("Total: %d project(s)\n", len(projects))
+	color.Cyan("Total: %d project(s)", len(projects))
 	fmt.Println()
 
 	return nil
+}
+
+func formatProjectStatus(status types.ServiceStatus) string {
+	switch status {
+	case types.StatusRunning:
+		return color.GreenString("Up")
+	case types.StatusStopped:
+		return color.YellowString("Exited")
+	case types.StatusFailed:
+		return color.RedString("Failed")
+	default:
+		return color.New(color.Faint).Sprint("Unknown")
+	}
 }
