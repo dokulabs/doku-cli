@@ -3,6 +3,9 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/dokulabs/doku-cli/internal/config"
+	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/project"
 	"github.com/dokulabs/doku-cli/pkg/types"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -58,13 +61,18 @@ func runRestart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Create service manager
+	// Try service manager first
 	serviceMgr := getServiceManager(dockerClient, cfgMgr)
-
-	// Get instance to check if it exists
 	instance, err := serviceMgr.Get(instanceName)
+
 	if err != nil {
-		return fmt.Errorf("service '%s' not found. Use 'doku list' to see installed services", instanceName)
+		// Not found at all
+		return fmt.Errorf("'%s' not found. Use 'doku list' or 'doku project list' to see installed services", instanceName)
+	}
+
+	// Check if it's a custom project
+	if instance.ServiceType == "custom-project" {
+		return restartProject(instanceName, dockerClient, cfgMgr)
 	}
 
 	fmt.Printf("Restarting %s...\n", color.CyanString(instanceName))
@@ -124,6 +132,51 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	color.New(color.Faint).Printf("Use 'doku info %s' to see full details\n", instanceName)
 	color.New(color.Faint).Printf("Use 'doku logs %s -f' to view logs\n", instanceName)
+
+	return nil
+}
+
+func restartProject(projectName string, dockerClient *docker.Client, cfgMgr *config.Manager) error {
+	projectMgr, err := project.NewManager(dockerClient, cfgMgr)
+	if err != nil {
+		return fmt.Errorf("failed to initialize project manager: %w", err)
+	}
+
+	// Check if project exists
+	proj, err := projectMgr.Get(projectName)
+	if err != nil {
+		return fmt.Errorf("'%s' not found. Use 'doku list' or 'doku project list' to see installed services", projectName)
+	}
+
+	fmt.Printf("Restarting %s...\n", color.CyanString(projectName))
+
+	// Stop the project
+	if err := projectMgr.Stop(projectName); err != nil {
+		return fmt.Errorf("failed to stop project: %w", err)
+	}
+
+	// Start the project
+	if err := projectMgr.Start(projectName); err != nil {
+		return fmt.Errorf("failed to start project: %w", err)
+	}
+
+	// Success message
+	color.Green("✓ Project restarted successfully")
+
+	// Show access information
+	fmt.Println()
+	if proj.URL != "" {
+		fmt.Printf("Access at: %s\n", color.GreenString(proj.URL))
+	} else {
+		fmt.Printf("Project: %s (internal only)\n", proj.Name)
+		if proj.Port > 0 {
+			fmt.Printf("Port: %d\n", proj.Port)
+		}
+	}
+
+	// Show helpful commands
+	fmt.Println()
+	color.New(color.Faint).Printf("Use 'doku logs %s -f' to view logs\n", projectName)
 
 	return nil
 }

@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/dokulabs/doku-cli/internal/config"
+	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/project"
 	"github.com/dokulabs/doku-cli/pkg/types"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -52,10 +55,17 @@ func runStop(cmd *cobra.Command, args []string) error {
 	// Create service manager
 	serviceMgr := getServiceManager(dockerClient, cfgMgr)
 
-	// Get instance to check if it exists
-	_, err = serviceMgr.Get(instanceName)
+	// Try service manager first
+	instance, err := serviceMgr.Get(instanceName)
+
 	if err != nil {
-		return fmt.Errorf("service '%s' not found. Use 'doku list' to see installed services", instanceName)
+		// Not found at all
+		return fmt.Errorf("'%s' not found. Use 'doku list' to see installed services", instanceName)
+	}
+
+	// Check if it's a custom project
+	if instance.ServiceType == "custom-project" {
+		return stopProject(instanceName, dockerClient, cfgMgr)
 	}
 
 	fmt.Printf("Stopping %s...\n", color.CyanString(instanceName))
@@ -77,6 +87,36 @@ func runStop(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	color.New(color.Faint).Printf("Use 'doku start %s' to restart the service\n", instanceName)
 	color.New(color.Faint).Printf("Use 'doku remove %s' to completely remove the service\n", instanceName)
+
+	return nil
+}
+
+func stopProject(projectName string, dockerClient *docker.Client, cfgMgr *config.Manager) error {
+	projectMgr, err := project.NewManager(dockerClient, cfgMgr)
+	if err != nil {
+		return fmt.Errorf("failed to initialize project manager: %w", err)
+	}
+
+	// Check if project exists
+	_, err = projectMgr.Get(projectName)
+	if err != nil {
+		return fmt.Errorf("'%s' not found. Use 'doku list' or 'doku project list' to see installed services", projectName)
+	}
+
+	fmt.Printf("Stopping %s...\n", color.CyanString(projectName))
+
+	// Stop the project
+	if err := projectMgr.Stop(projectName); err != nil {
+		return fmt.Errorf("failed to stop project: %w", err)
+	}
+
+	// Success message
+	color.Green("✓ Project stopped successfully")
+
+	// Show helpful commands
+	fmt.Println()
+	color.New(color.Faint).Printf("Use 'doku start %s' to restart the project\n", projectName)
+	color.New(color.Faint).Printf("Use 'doku remove %s' to completely remove the project\n", projectName)
 
 	return nil
 }
