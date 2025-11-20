@@ -22,9 +22,17 @@ type Client struct {
 	ctx context.Context
 }
 
-// NewClient creates a new Docker client
+// NewClient creates a new Docker client with BuildKit enabled
 func NewClient() (*Client, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	// Set DOCKER_BUILDKIT environment variable to enable BuildKit
+	// This must be done before any Docker operations
+	os.Setenv("DOCKER_BUILDKIT", "1")
+
+	// Create client with BuildKit support
+	cli, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}

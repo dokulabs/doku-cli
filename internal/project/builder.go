@@ -78,9 +78,6 @@ func (b *Builder) Build(opts DockerBuildOptions) (string, error) {
 	}
 
 	// Prepare build options
-	// Note: BuildKit is controlled by the Docker daemon configuration
-	// If you need SSH mounts, ensure BuildKit is enabled in Docker Desktop settings
-	// or set DOCKER_BUILDKIT=1 before running doku commands
 	buildOpts := types.ImageBuildOptions{
 		Tags:       opts.Tags,
 		Dockerfile: relDockerfile,
@@ -88,6 +85,8 @@ func (b *Builder) Build(opts DockerBuildOptions) (string, error) {
 		Remove:     true,
 		PullParent: opts.Pull,
 		BuildArgs:  opts.BuildArgs,
+		// Note: BuildKit must be enabled in Docker daemon settings for SSH mounts
+		// Do NOT use Version: types.BuilderBuildKit as it causes parsing errors
 	}
 
 	// Execute build
@@ -96,7 +95,7 @@ func (b *Builder) Build(opts DockerBuildOptions) (string, error) {
 		errMsg := err.Error()
 		// Check for common BuildKit-related errors and provide helpful messages
 		if strings.Contains(errMsg, "--mount option requires BuildKit") {
-			return "", fmt.Errorf("BuildKit is required for SSH mounts.\n\nTo fix this:\n  1. Enable BuildKit in Docker Desktop (Settings → Features in development → Use Docker Buildx)\n  2. Or set environment variable: export DOCKER_BUILDKIT=1\n  3. Then try again\n\nOriginal error: %w", err)
+			return "", fmt.Errorf("BuildKit is required for SSH mounts in your Dockerfile.\n\nTo enable BuildKit:\n\n  1. Open Docker Desktop\n  2. Go to Settings → Features in development\n  3. Enable \"Use containerd for pulling and storing images\"\n  4. Restart Docker Desktop\n  5. Try the installation again\n\nAlternatively, remove the RUN --mount=type=ssh line from your Dockerfile\nif you don't need private repository access during build.\n\nOriginal error: %w", err)
 		}
 		return "", fmt.Errorf("failed to start build: %w", err)
 	}
@@ -307,6 +306,24 @@ func (b *Builder) parseBuildOutput(reader io.Reader) (string, error) {
 		// Handle error messages
 		if msg.Error != "" {
 			red.Printf("✗ Build failed: %s\n", msg.Error)
+
+			// Check for BuildKit-specific errors and provide helpful guidance
+			if strings.Contains(msg.Error, "--mount option requires BuildKit") {
+				fmt.Println()
+				cyan.Println("ℹ️  BuildKit is required for SSH mounts in your Dockerfile")
+				fmt.Println()
+				fmt.Println("To enable BuildKit:")
+				fmt.Println("  1. Open Docker Desktop")
+				fmt.Println("  2. Go to Settings → Features in development")
+				fmt.Println("  3. Enable \"Use containerd for pulling and storing images\"")
+				fmt.Println("  4. Restart Docker Desktop")
+				fmt.Println("  5. Try the installation again")
+				fmt.Println()
+				fmt.Println("Alternatively, remove the 'RUN --mount=type=ssh' line from your Dockerfile")
+				fmt.Println("if you don't need private repository access during build.")
+				fmt.Println()
+			}
+
 			return "", fmt.Errorf("build error: %s", msg.Error)
 		}
 
