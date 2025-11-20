@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
-	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/internal/service"
@@ -92,11 +92,20 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get config: %w", err)
 	}
 
-	// Update instance statuses from Docker
+	// Update instance statuses from Docker in parallel
 	ctx := context.Background()
+	var wg sync.WaitGroup
+
 	for _, instance := range filteredInstances {
-		updateInstanceStatus(ctx, dockerClient, instance)
+		wg.Add(1)
+		go func(inst *types.Instance) {
+			defer wg.Done()
+			updateInstanceStatus(ctx, dockerClient, inst)
+		}(instance)
 	}
+
+	// Wait for all status updates to complete
+	wg.Wait()
 
 	// Display instances
 	displayInstances(filteredInstances, cfg.Preferences.Protocol, cfg.Preferences.Domain, listVerbose)
@@ -151,38 +160,49 @@ func updateInstanceStatus(ctx context.Context, dockerClient *docker.Client, inst
 		instance.Status = types.StatusStopped
 	}
 
-	// Get resource usage if running
-	if instance.Status == types.StatusRunning {
-		updateResourceUsage(ctx, dockerClient, instance, &containerInfo)
-	}
+	// Note: Resource usage (CPU/Memory stats) is not currently displayed in list output
+	// The updateResourceUsage function has been removed to improve performance
 }
 
-// updateMultiContainerStatus updates status for multi-container services
+// updateMultiContainerStatus updates status for multi-container services in parallel
 func updateMultiContainerStatus(ctx context.Context, dockerClient *docker.Client, instance *types.Instance) {
 	runningCount := 0
 	stoppedCount := 0
 	failedCount := 0
 
+	// Use mutex to safely update counters from goroutines
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
 	for i := range instance.Containers {
-		container := &instance.Containers[i]
+		wg.Add(1)
+		go func(container *types.ContainerInfo) {
+			defer wg.Done()
 
-		containerInfo, err := dockerClient.ContainerInspect(container.ContainerID)
-		if err != nil {
-			container.Status = "unknown"
-			continue
-		}
+			containerInfo, err := dockerClient.ContainerInspect(container.ContainerID)
+			if err != nil {
+				container.Status = "unknown"
+				return
+			}
 
-		if containerInfo.State.Running {
-			container.Status = "running"
-			runningCount++
-		} else if containerInfo.State.Dead || containerInfo.State.OOMKilled {
-			container.Status = "failed"
-			failedCount++
-		} else {
-			container.Status = "stopped"
-			stoppedCount++
-		}
+			mu.Lock()
+			defer mu.Unlock()
+
+			if containerInfo.State.Running {
+				container.Status = "running"
+				runningCount++
+			} else if containerInfo.State.Dead || containerInfo.State.OOMKilled {
+				container.Status = "failed"
+				failedCount++
+			} else {
+				container.Status = "stopped"
+				stoppedCount++
+			}
+		}(&instance.Containers[i])
 	}
+
+	// Wait for all container inspections to complete
+	wg.Wait()
 
 	// Determine overall status
 	if failedCount > 0 {
@@ -194,23 +214,6 @@ func updateMultiContainerStatus(ctx context.Context, dockerClient *docker.Client
 	} else {
 		// Partially running
 		instance.Status = types.StatusRunning
-	}
-}
-
-func updateResourceUsage(ctx context.Context, dockerClient *docker.Client, instance *types.Instance, containerInfo *dockerTypes.ContainerJSON) {
-	// Get container stats (non-streaming)
-	_, err := dockerClient.ContainerStats(instance.ContainerName)
-	if err != nil {
-		return
-	}
-	// Note: Stats response should be read and closed properly in production
-
-	// Parse stats for memory usage
-	// Note: This is a simplified version, real implementation would need proper JSON parsing
-	// For now, we'll use the container inspect data
-	if containerInfo.State.Running {
-		instance.Resources.MemoryUsage = "N/A" // Would need stats parsing
-		instance.Resources.CPUUsage = "N/A"    // Would need stats parsing
 	}
 }
 
