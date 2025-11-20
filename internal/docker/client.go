@@ -24,6 +24,10 @@ type Client struct {
 
 // NewClient creates a new Docker client
 func NewClient() (*Client, error) {
+	// Enable BuildKit for advanced features like SSH mounts
+	// This needs to be set before creating the client
+	os.Setenv("DOCKER_BUILDKIT", "1")
+
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
