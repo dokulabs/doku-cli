@@ -259,14 +259,24 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get the current executable path
-	currentExe, _ := os.Executable()
-	currentExe, _ = filepath.EvalSymlinks(currentExe)
+	currentExe, err := os.Executable()
+	if err != nil {
+		// If we can't determine the current executable, continue without self-delete detection
+		currentExe = ""
+	} else {
+		if resolved, err := filepath.EvalSymlinks(currentExe); err == nil {
+			currentExe = resolved
+		}
+	}
 
 	selfDeleteFailed := false
 	for _, binPath := range binaryPaths {
 		if _, err := os.Stat(binPath); err == nil {
 			// Resolve symlinks for comparison
-			resolvedPath, _ := filepath.EvalSymlinks(binPath)
+			resolvedPath := binPath
+			if resolved, err := filepath.EvalSymlinks(binPath); err == nil {
+				resolvedPath = resolved
+			}
 
 			// File exists, try to remove it
 			if err := os.Remove(binPath); err != nil {

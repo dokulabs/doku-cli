@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"net/url"
 	"os/exec"
 	"runtime"
+	"strings"
 
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/fatih/color"
@@ -109,17 +111,44 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// validateURL validates that the URL is safe to open in a browser
+func validateURL(rawURL string) error {
+	// Parse the URL
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL format: %w", err)
+	}
+
+	// Only allow http and https schemes
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("invalid URL scheme: %s (only http and https are allowed)", parsed.Scheme)
+	}
+
+	// Ensure there's a host
+	if parsed.Host == "" {
+		return fmt.Errorf("invalid URL: missing host")
+	}
+
+	return nil
+}
+
 // openBrowser opens a URL in the default browser
-func openBrowser(url string) error {
+func openBrowser(rawURL string) error {
+	// Validate URL before opening
+	if err := validateURL(rawURL); err != nil {
+		return err
+	}
+
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", url)
+		cmd = exec.Command("open", rawURL)
 	case "linux":
-		cmd = exec.Command("xdg-open", url)
+		cmd = exec.Command("xdg-open", rawURL)
 	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}

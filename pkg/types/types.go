@@ -99,10 +99,11 @@ type DiscoveryConfig struct {
 
 // Instance represents an installed service instance
 type Instance struct {
-	Name        string
-	ServiceType string
-	Version     string
-	Status      ServiceStatus
+	Name         string
+	ServiceType  string
+	Version      string
+	Status       ServiceStatus
+	HealthStatus string // Health check status: healthy, unhealthy, starting, none, unknown
 
 	// Single-container fields (backward compatible)
 	ContainerName string

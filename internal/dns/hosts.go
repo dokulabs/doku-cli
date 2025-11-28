@@ -267,10 +267,9 @@ func (m *Manager) copyWithSudo(src, dest string) error {
 	fmt.Println("📝 Please enter your password when prompted...")
 	fmt.Println()
 
-	cmd := fmt.Sprintf("sudo cp %s %s", src, dest)
-
-	// Execute the command - this will prompt for sudo password
-	if err := executeCommand(cmd); err != nil {
+	// Execute sudo cp with proper argument separation (not string parsing)
+	// This is safe from shell injection as arguments are passed directly
+	if err := executeCommandArgs("sudo", "cp", src, dest); err != nil {
 		return fmt.Errorf("failed to update hosts file with sudo: %w", err)
 	}
 
@@ -370,9 +369,31 @@ func (m *Manager) GetHostsFilePath() string {
 	return m.hostsFile
 }
 
-// executeCommand executes a shell command
+// executeCommandArgs executes a command with separate arguments (safe from injection)
+// This is the preferred way to execute commands as it doesn't parse strings
+func executeCommandArgs(name string, args ...string) error {
+	if name == "" {
+		return fmt.Errorf("empty command name")
+	}
+
+	// Create command with separate arguments - safe from shell injection
+	command := exec.Command(name, args...)
+
+	// Connect to stdin/stdout/stderr so user can interact with sudo password prompt
+	command.Stdin = os.Stdin
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+
+	// Run the command
+	return command.Run()
+}
+
+// executeCommand executes a shell command (DEPRECATED - use executeCommandArgs instead)
+// Kept for backwards compatibility but should not be used for commands with user input
 func executeCommand(cmd string) error {
 	// Split command into parts
+	// WARNING: This is unsafe with paths containing spaces
+	// Use executeCommandArgs instead for new code
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
 		return fmt.Errorf("empty command")

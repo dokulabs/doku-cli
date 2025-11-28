@@ -21,6 +21,7 @@ var (
 	listAll     bool
 	listService string
 	listVerbose bool
+	listHealth  bool
 )
 
 var listCmd = &cobra.Command{
@@ -37,6 +38,7 @@ func init() {
 	listCmd.Flags().BoolVarP(&listAll, "all", "a", false, "Show all instances including stopped")
 	listCmd.Flags().StringVarP(&listService, "service", "s", "", "Filter by service type")
 	listCmd.Flags().BoolVarP(&listVerbose, "verbose", "v", false, "Show detailed information")
+	listCmd.Flags().BoolVar(&listHealth, "health", false, "Show health check status")
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -107,8 +109,13 @@ func runList(cmd *cobra.Command, args []string) error {
 	// Wait for all status updates to complete
 	wg.Wait()
 
+	// Check health status if requested
+	if listHealth {
+		updateHealthStatus(ctx, dockerClient, filteredInstances)
+	}
+
 	// Display instances
-	displayInstances(filteredInstances, cfg.Preferences.Protocol, cfg.Preferences.Domain, listVerbose)
+	displayInstances(filteredInstances, cfg.Preferences.Protocol, cfg.Preferences.Domain, listVerbose, listHealth)
 
 	return nil
 }
@@ -217,9 +224,55 @@ func updateMultiContainerStatus(ctx context.Context, dockerClient *docker.Client
 	}
 }
 
-func displayInstances(instances []*types.Instance, protocol, domain string, verbose bool) {
+// updateHealthStatus checks health status for all instances
+func updateHealthStatus(ctx context.Context, dockerClient *docker.Client, instances []*types.Instance) {
+	var wg sync.WaitGroup
+
+	for _, instance := range instances {
+		if instance.Status != types.StatusRunning {
+			continue
+		}
+
+		wg.Add(1)
+		go func(inst *types.Instance) {
+			defer wg.Done()
+			checkInstanceHealth(ctx, dockerClient, inst)
+		}(instance)
+	}
+
+	wg.Wait()
+}
+
+// checkInstanceHealth checks the health of a single instance
+func checkInstanceHealth(ctx context.Context, dockerClient *docker.Client, instance *types.Instance) {
+	containerInfo, err := dockerClient.ContainerInspect(instance.ContainerName)
+	if err != nil {
+		instance.HealthStatus = "unknown"
+		return
+	}
+
+	// Check if container has health check
+	if containerInfo.State.Health == nil {
+		instance.HealthStatus = "none"
+		return
+	}
+
+	// Get health status
+	switch containerInfo.State.Health.Status {
+	case "healthy":
+		instance.HealthStatus = "healthy"
+	case "unhealthy":
+		instance.HealthStatus = "unhealthy"
+	case "starting":
+		instance.HealthStatus = "starting"
+	default:
+		instance.HealthStatus = "unknown"
+	}
+}
+
+func displayInstances(instances []*types.Instance, protocol, domain string, verbose, showHealth bool) {
 	if verbose {
-		displayInstancesVerbose(instances, protocol, domain)
+		displayInstancesVerbose(instances, protocol, domain, showHealth)
 		return
 	}
 
@@ -229,14 +282,26 @@ func displayInstances(instances []*types.Instance, protocol, domain string, verb
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
 
 	// Print header - plain text without colors for proper alignment
-	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-		"NAME",
-		"SERVICE",
-		"VERSION",
-		"STATUS",
-		"PORTS",
-		"URL",
-	)
+	if showHealth {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			"NAME",
+			"SERVICE",
+			"VERSION",
+			"STATUS",
+			"HEALTH",
+			"PORTS",
+			"URL",
+		)
+	} else {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			"NAME",
+			"SERVICE",
+			"VERSION",
+			"STATUS",
+			"PORTS",
+			"URL",
+		)
+	}
 
 	// Print each instance
 	for _, instance := range instances {
@@ -260,6 +325,9 @@ func displayInstances(instances []*types.Instance, protocol, domain string, verb
 		// Format status (plain text to fix alignment)
 		status := formatStatusTextForTable(instance.Status)
 
+		// Format health
+		health := formatHealthForTable(instance.HealthStatus)
+
 		// Format ports
 		ports := formatPortsForTable(instance)
 
@@ -269,14 +337,26 @@ func displayInstances(instances []*types.Instance, protocol, domain string, verb
 			url = "-"
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			name,
-			serviceType,
-			version,
-			status,
-			ports,
-			url,
-		)
+		if showHealth {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				name,
+				serviceType,
+				version,
+				status,
+				health,
+				ports,
+				url,
+			)
+		} else {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				name,
+				serviceType,
+				version,
+				status,
+				ports,
+				url,
+			)
+		}
 	}
 
 	w.Flush()
@@ -285,7 +365,22 @@ func displayInstances(instances []*types.Instance, protocol, domain string, verb
 	fmt.Println()
 }
 
-func displayInstancesVerbose(instances []*types.Instance, protocol, domain string) {
+func formatHealthForTable(health string) string {
+	switch health {
+	case "healthy":
+		return "Healthy"
+	case "unhealthy":
+		return "Unhealthy"
+	case "starting":
+		return "Starting"
+	case "none":
+		return "-"
+	default:
+		return "-"
+	}
+}
+
+func displayInstancesVerbose(instances []*types.Instance, protocol, domain string, showHealth bool) {
 	fmt.Println()
 	color.New(color.Bold, color.FgCyan).Println("📋 Installed Services")
 	fmt.Println()

@@ -180,7 +180,12 @@ func handleMultiContainerLogs(dockerClient *docker.Client, instance *types.Insta
 				continue
 			}
 
-			io.Copy(os.Stdout, logsReader)
+			if _, err := io.Copy(os.Stdout, logsReader); err != nil {
+				// Log copy errors are non-fatal for multi-container display
+				if err != io.EOF {
+					color.Yellow("Warning: error reading logs from %s: %v\n", container.Name, err)
+				}
+			}
 			logsReader.Close()
 			fmt.Println()
 		}
@@ -227,7 +232,12 @@ func handleMultiContainerLogs(dockerClient *docker.Client, instance *types.Insta
 			}()
 		}
 
-		io.Copy(os.Stdout, logsReader)
+		if _, err := io.Copy(os.Stdout, logsReader); err != nil {
+			// Only return error if it's not EOF or broken pipe (normal for follow mode)
+			if err != io.EOF && !strings.Contains(err.Error(), "broken pipe") {
+				return fmt.Errorf("error reading logs: %w", err)
+			}
+		}
 		return nil
 	}
 

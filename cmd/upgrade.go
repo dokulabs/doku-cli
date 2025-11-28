@@ -195,7 +195,11 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	// Replace the binary
 	if err := copyFile(tmpFile, execPath); err != nil {
 		// Restore backup on failure
-		copyFile(backupPath, execPath)
+		if restoreErr := copyFile(backupPath, execPath); restoreErr != nil {
+			color.Red("⚠️  CRITICAL: Failed to restore backup after failed upgrade: %v", restoreErr)
+			color.Red("   Manual intervention may be required. Backup is at: %s", backupPath)
+			return fmt.Errorf("failed to replace binary: %w (backup restoration also failed: %v)", err, restoreErr)
+		}
 		os.Remove(backupPath)
 		return fmt.Errorf("failed to replace binary: %w", err)
 	}

@@ -61,7 +61,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 			Message: "Doku is already initialized. Reinitialize?",
 			Default: false,
 		}
-		survey.AskOne(prompt, &reinit)
+		if err := survey.AskOne(prompt, &reinit); err != nil {
+			return fmt.Errorf("failed to get user confirmation: %w", err)
+		}
 
 		if !reinit {
 			color.Yellow("⚠️  Initialization cancelled")
@@ -81,7 +83,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Docker daemon is not running: %w", err)
 	}
 
-	version, _ := dockerClient.Version()
+	version, err := dockerClient.Version()
+	if err != nil {
+		return fmt.Errorf("failed to get Docker version: %w", err)
+	}
 	printSuccess(fmt.Sprintf("Docker detected (version %s)", version.Version))
 
 	// Step 2: Prompt for preferences
@@ -98,7 +103,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 			},
 			Default: "HTTPS (recommended, with local certificates)",
 		}
-		survey.AskOne(protocolPrompt, &protocolChoice)
+		if err := survey.AskOne(protocolPrompt, &protocolChoice); err != nil {
+			return fmt.Errorf("failed to get protocol selection: %w", err)
+		}
 
 		if protocolChoice == "HTTPS (recommended, with local certificates)" {
 			initProtocol = "https"
@@ -113,7 +120,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 			Message: "Domain name for services:",
 			Default: "doku.local",
 		}
-		survey.AskOne(domainPrompt, &initDomain)
+		if err := survey.AskOne(domainPrompt, &initDomain); err != nil {
+			return fmt.Errorf("failed to get domain input: %w", err)
+		}
 	}
 
 	printSuccess(fmt.Sprintf("Protocol: %s, Domain: %s", initProtocol, initDomain))
@@ -136,7 +145,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 		Default: "Dozzle (Recommended) - Real-time Docker log viewer with web UI",
 		Help:    "Dozzle is a lightweight log viewer that provides real-time access to all container logs through a simple web interface.",
 	}
-	survey.AskOne(monitoringPrompt, &monitoringChoice)
+	if err := survey.AskOne(monitoringPrompt, &monitoringChoice); err != nil {
+		return fmt.Errorf("failed to get monitoring selection: %w", err)
+	}
 
 	// Parse monitoring tool choice
 	var monitoringTool string
@@ -223,7 +234,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 			},
 			Default: "Automatic (/etc/hosts modification)",
 		}
-		survey.AskOne(dnsPrompt, &dnsMethod)
+		if err := survey.AskOne(dnsPrompt, &dnsMethod); err != nil {
+			return fmt.Errorf("failed to get DNS setup selection: %w", err)
+		}
 
 		if dnsMethod == "Automatic (/etc/hosts modification)" {
 			fmt.Println("⚠️  This requires administrator privileges")
