@@ -207,6 +207,11 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		ExposedPorts: i.createExposedPorts(opts.PortMappings),
 	}
 
+	// Set custom command if specified in the service spec
+	if len(spec.Command) > 0 {
+		containerConfig.Cmd = spec.Command
+	}
+
 	// Create host configuration
 	hostConfig := &dockerTypes.HostConfig{
 		RestartPolicy: dockerTypes.RestartPolicy{
