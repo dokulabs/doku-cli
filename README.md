@@ -20,7 +20,7 @@ Doku is a CLI tool that simplifies running and managing Docker-based services lo
 - 💪 **Resource control** - Set CPU and memory limits per service
 - 🏗️ **API Gateway pattern** - Internal-only services for microservices architecture
 - 🔐 **Environment management** - Secure environment variable handling with masking
-- 📋 **Service catalog** - Curated collection of 24+ popular development services
+- 📋 **Service catalog** - Curated collection of 25+ popular development services
 - 🔄 **Full lifecycle management** - Start, stop, restart, and remove services with ease
 - 🧩 **Multi-container services** - Deploy complex services with multiple containers
 - 🔗 **Dependency management** - Automatic installation of service dependencies
@@ -32,8 +32,6 @@ Doku is a CLI tool that simplifies running and managing Docker-based services lo
 
 ### Installation
 
-**Quick Install (Recommended):**
-
 ```bash
 # Using curl
 curl -fsSL https://raw.githubusercontent.com/dokulabs/doku-cli/main/scripts/install.sh | bash
@@ -41,27 +39,6 @@ curl -fsSL https://raw.githubusercontent.com/dokulabs/doku-cli/main/scripts/inst
 # Or using wget
 wget -qO- https://raw.githubusercontent.com/dokulabs/doku-cli/main/scripts/install.sh | bash
 ```
-
-**Using Go:**
-
-```bash
-# Install latest release
-go install github.com/dokulabs/doku-cli/cmd/doku@latest
-
-# Install from main branch
-go install github.com/dokulabs/doku-cli/cmd/doku@main
-
-# Install specific version
-go install github.com/dokulabs/doku-cli/cmd/doku@v0.2.0
-```
-
-**More Options:**
-
-See [INSTALL.md](INSTALL.md) for detailed installation instructions including:
-- Installing specific versions
-- Building from source
-- Custom installation directories
-- Platform-specific instructions
 
 **Verify installation:**
 
@@ -138,6 +115,12 @@ Update configuration dynamically without rebuilding:
 # View environment variables
 doku env frontend
 
+# View with actual values (unmask sensitive data)
+doku env frontend --show-values
+
+# Export format for shell sourcing
+doku env frontend --export > frontend.env
+
 # Set new variables
 doku env set frontend API_KEY=newsecret DEBUG=true
 
@@ -146,6 +129,9 @@ doku env set frontend API_KEY=newsecret --restart
 
 # Remove variables
 doku env unset frontend OLD_KEY
+
+# Interactive editing (add, edit, delete variables)
+doku env edit frontend
 ```
 
 ### Manage Services
@@ -228,7 +214,7 @@ The upgrade command will:
 **📋 See the complete and up-to-date service catalog:**
 → **[Doku Service Catalog](https://github.com/dokulabs/doku-catalog)**
 
-The catalog includes 24+ services across multiple categories:
+The catalog includes 25+ services across multiple categories:
 - **Databases**: PostgreSQL (with pgvector), MySQL, MongoDB, MariaDB, ClickHouse, Redis, Memcached
 - **Message Queues**: RabbitMQ, Apache Kafka
 - **Search & Analytics**: Elasticsearch
@@ -236,7 +222,7 @@ The catalog includes 24+ services across multiple categories:
 - **Web Servers**: Nginx
 - **Development Tools**: MailHog, Adminer, phpMyAdmin, LocalStack
 - **Storage**: MinIO
-- **Security**: HashiCorp Vault
+- **Security**: HashiCorp Vault, Keycloak
 - **Coordination**: Zookeeper
 
 **Browse services locally:**
@@ -531,15 +517,29 @@ doku init --domain mydev.local
 | `doku list` | List all running services |
 | `doku list --all` | List all services (including stopped) |
 | `doku info <service>` | Show detailed service information |
-| `doku env <service>` | Show environment variables |
-| `doku env set <service> KEY=VALUE` | Set environment variables |
-| `doku env unset <service> KEY` | Remove environment variables |
 | `doku start <service>` | Start a stopped service |
 | `doku stop <service>` | Stop a running service |
 | `doku restart <service>` | Restart a service |
 | `doku logs <service>` | View service logs |
 | `doku logs <service> -f` | Follow service logs in real-time |
 | `doku remove <service>` | Remove a service and its data |
+| **Environment Variables** | |
+| `doku env <service>` | Show environment variables |
+| `doku env <service> --show-values` | Show actual values (unmask sensitive data) |
+| `doku env <service> --export` | Output in shell export format |
+| `doku env set <service> KEY=VALUE` | Set environment variables |
+| `doku env unset <service> KEY` | Remove environment variables |
+| `doku env edit <service>` | Interactively edit environment variables |
+| **Custom Projects** | |
+| `doku project add <path>` | Add a custom project with Dockerfile |
+| `doku project list` | List all registered projects |
+| `doku project build <name>` | Build a project's Docker image |
+| `doku project run <name>` | Run a project's container |
+| `doku project remove <name>` | Remove a project |
+| **Configuration** | |
+| `doku config list` | List all configuration settings |
+| `doku config get <key>` | Get a specific config value |
+| `doku config set <key> <value>` | Set a config value |
 | **Cleanup** | |
 | `doku uninstall` | Uninstall Doku and clean up everything |
 
@@ -565,6 +565,32 @@ doku init --domain mydev.local
 - `--internal` - Install as internal service (no external access)
 - `--skip-deps` - Skip dependency installation
 - `--no-auto-install-deps` - Prompt before installing dependencies
+
+### Project Flags
+
+**`doku project add`:**
+- `--name, -n` - Project name (defaults to directory name)
+- `--dockerfile` - Path to Dockerfile (default: ./Dockerfile)
+- `--port, -p` - Main port to expose
+- `--ports` - Additional port mappings (host:container)
+- `--env, -e` - Environment variables (KEY=VALUE)
+- `--depends` - Service dependencies (e.g., postgres:16,redis)
+- `--domain` - Custom domain (default: doku.local)
+- `--internal` - Internal only (no Traefik/HTTPS)
+
+**`doku project build`:**
+- `--no-cache` - Build without using cache
+- `--pull` - Pull base image before building
+- `--tag, -t` - Custom tag for the image
+
+**`doku project run`:**
+- `--build` - Build image before running
+- `--install-deps` - Automatically install missing dependencies
+- `--detach, -d` - Run in background (default: true)
+
+**`doku project remove`:**
+- `--image` - Also remove the Docker image
+- `--yes, -y` - Skip confirmation prompt
 
 ## Uninstalling
 
@@ -640,78 +666,58 @@ MIT License - see [LICENSE](LICENSE) for details.
 - 🐛 [Report Issues](https://github.com/dokulabs/doku-cli/issues)
 - 💬 [Discussions](https://github.com/dokulabs/doku-cli/discussions)
 
-## Project Status
+## Project Management
 
-**Status:** ✅ Production Ready (v0.2.0)
+Manage custom projects with Dockerfiles using the `doku project` commands:
 
-### Completed Features ✅
+```bash
+# Add a project from a directory with Dockerfile
+doku project add ./my-app --name myapp --port 8080
 
-**Core Infrastructure:**
-- ✅ Configuration management (TOML-based)
-- ✅ Docker SDK integration with full container lifecycle
-- ✅ SSL certificate generation (mkcert)
-- ✅ Traefik reverse proxy setup with automatic routing
-- ✅ DNS configuration (hosts file integration)
-- ✅ Network management (doku-network bridge)
+# Add with dependencies on catalog services
+doku project add ./backend \
+  --name api \
+  --port 8080 \
+  --depends postgres:16,redis
 
-**Service Catalog:**
-- ✅ GitHub-based catalog system
-- ✅ Version management for services
-- ✅ Service metadata (icons, descriptions, tags, links)
-- ✅ Catalog browsing and search
-- ✅ Automatic catalog updates
+# List all registered projects
+doku project list
 
-**Service Management:**
-- ✅ Service installation with interactive prompts
-- ✅ Service listing with filtering and status
-- ✅ Service lifecycle (start, stop, restart)
-- ✅ Service removal with cleanup
-- ✅ Service information display
-- ✅ Environment variable management with masking
-- ✅ Log viewing with follow mode
-- ✅ Resource limits (CPU/memory)
-- ✅ Volume management
-- ✅ Internal-only services (API Gateway pattern)
-- ✅ Port mapping (single and multiple ports)
+# Build a project's Docker image
+doku project build myapp
 
-**Multi-Container & Dependencies (Phase 3 Complete!):**
-- ✅ Multi-container service support
-- ✅ Automatic dependency resolution
-- ✅ Topological sorting for installation order
-- ✅ Network alias automation for inter-container communication
-- ✅ Configuration file mounting from catalog
-- ✅ Container startup order management
-- ✅ Dependency-aware removal (keeps dependencies)
+# Build without cache
+doku project build myapp --no-cache
 
-**Custom Projects & Dynamic Configuration (Phase 4 Complete!):**
-- ✅ Custom project installation with `--path` flag
-- ✅ Automatic Dockerfile build and run
-- ✅ Dynamic environment variable management
-- ✅ `doku env set` command for updating variables
-- ✅ `doku env unset` command for removing variables
-- ✅ Auto-restart option for environment changes
+# Run a project
+doku project run myapp
 
-**Installation & Distribution:**
-- ✅ One-line installation via curl/wget
-- ✅ Pre-built binaries for multiple platforms
-- ✅ Go install support (@latest, @main, @version)
-- ✅ Build from source option
-- ✅ Self-upgrade command
+# Build and run in one step
+doku project run myapp --build
 
-**Utilities:**
-- ✅ Complete uninstallation with automatic cleanup
-- ✅ Fixed uninstall to remove all containers and volumes
-- ✅ Version information
-- ✅ Help system
+# Remove a project
+doku project remove myapp
 
-### Planned Enhancements 📋
-- 📋 Service health checks and monitoring
-- 📋 Multi-project workspace support
-- 📋 Service templates and custom definitions
-- 📋 Environment profiles (dev/staging/prod)
-- 📋 Backup/restore functionality
-- 📋 Service update command
-- 📋 Dashboard UI (web-based management)
+# Remove project and its Docker image
+doku project remove myapp --image --yes
+```
+
+## Configuration Management
+
+View and modify Doku settings using the `doku config` commands:
+
+```bash
+# List all configuration
+doku config list
+
+# Get a specific value
+doku config get monitoring.tool
+doku config get preferences.domain
+
+# Set configuration values
+doku config set monitoring.enabled true
+doku config set preferences.domain mydomain.local
+```
 
 ---
 
