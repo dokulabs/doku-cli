@@ -255,10 +255,10 @@ func updateAllServices(cfgMgr *config.Manager, catalogMgr *catalog.Manager, serv
 
 	// Find services with available updates
 	type updateInfo struct {
-		instance      string
-		serviceType   string
-		currentVer    string
-		latestVer     string
+		instance       string
+		serviceType    string
+		currentVer     string
+		latestVer      string
 		multiContainer bool
 	}
 
