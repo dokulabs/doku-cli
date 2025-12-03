@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -268,6 +269,73 @@ func (m *Manager) Recreate(instanceName string) error {
 	return m.configMgr.UpdateInstance(instanceName, instance)
 }
 
+// RecreateWithImage recreates a container with a new image (for upgrades)
+func (m *Manager) RecreateWithImage(instanceName string, newImage string) error {
+	instance, err := m.configMgr.GetInstance(instanceName)
+	if err != nil {
+		return fmt.Errorf("instance not found: %w", err)
+	}
+
+	// Multi-container services not supported yet
+	if instance.IsMultiContainer {
+		return fmt.Errorf("image upgrade not supported for multi-container services yet")
+	}
+
+	// Get container info to preserve configuration
+	containerInfo, err := m.dockerClient.ContainerInspect(instance.ContainerName)
+	if err != nil {
+		return fmt.Errorf("failed to inspect container: %w", err)
+	}
+
+	// Update the image
+	containerInfo.Config.Image = newImage
+
+	// Load environment from env file (primary source)
+	envMgr := envfile.NewManager(m.configMgr.GetDokuDir())
+	envPath := envMgr.GetServiceEnvPath(instanceName, "")
+	env, err := envMgr.Load(envPath)
+	if err != nil {
+		// Fall back to instance.Environment for backward compatibility
+		env = instance.Environment
+	}
+
+	// Build environment array
+	if len(env) > 0 {
+		envArray := make([]string, 0, len(env))
+		for key, value := range env {
+			envArray = append(envArray, fmt.Sprintf("%s=%s", key, value))
+		}
+		containerInfo.Config.Env = envArray
+	}
+
+	// Stop the container if running
+	timeout := 10
+	if err := m.dockerClient.ContainerStop(instance.ContainerName, &timeout); err != nil {
+		// Ignore error if container is already stopped
+		fmt.Printf("Note: Container may already be stopped: %v\n", err)
+	}
+
+	// Disconnect from network
+	networkMgr := docker.NewNetworkManager(m.dockerClient)
+	if err := networkMgr.DisconnectContainer("doku-network", instance.ContainerName, true); err != nil {
+		fmt.Printf("Warning: failed to disconnect from network: %v\n", err)
+	}
+
+	// Remove the container (but preserve volumes)
+	if err := m.dockerClient.ContainerRemove(instance.ContainerName, false); err != nil {
+		return fmt.Errorf("failed to remove container: %w", err)
+	}
+
+	// Recreate the container with the new image
+	if err := m.recreateContainer(instance, &containerInfo); err != nil {
+		return fmt.Errorf("failed to recreate container: %w", err)
+	}
+
+	// Update config
+	instance.UpdatedAt = time.Now()
+	return m.configMgr.UpdateInstance(instanceName, instance)
+}
+
 // RestartWithPort restarts a service instance with a new host port mapping
 // This requires recreating the container since port mappings cannot be changed on existing containers
 func (m *Manager) RestartWithPort(instanceName string, newPort int) error {
@@ -455,15 +523,16 @@ func (m *Manager) GetStatus(instanceName string) (types.ServiceStatus, error) {
 }
 
 // GetStats retrieves resource usage statistics
-func (m *Manager) GetStats(instanceName string) (container.StatsResponseReader, error) {
+func (m *Manager) GetStats(instanceName string) (*docker.ContainerStatsResult, error) {
 	instance, err := m.configMgr.GetInstance(instanceName)
 	if err != nil {
-		return container.StatsResponseReader{}, fmt.Errorf("instance not found: %w", err)
+		return nil, fmt.Errorf("instance not found: %w", err)
 	}
 
-	stats, err := m.dockerClient.ContainerStats(instance.ContainerName)
+	ctx := context.Background()
+	stats, err := m.dockerClient.ContainerStats(ctx, instance.ContainerName)
 	if err != nil {
-		return container.StatsResponseReader{}, fmt.Errorf("failed to get container stats: %w", err)
+		return nil, fmt.Errorf("failed to get container stats: %w", err)
 	}
 
 	return stats, nil

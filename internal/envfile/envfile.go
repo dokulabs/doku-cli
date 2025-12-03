@@ -73,6 +73,30 @@ func (m *Manager) Delete(envPath string) error {
 	return os.Remove(envPath)
 }
 
+// FindEnvFilesByPrefix returns all env files that match a given instance prefix
+// This is useful for finding multi-container env files like <instance>-<container>.env
+func (m *Manager) FindEnvFilesByPrefix(instanceName string) []string {
+	var files []string
+
+	// Check services directory
+	servicesDir := filepath.Join(m.dokuDir, "services")
+	if entries, err := os.ReadDir(servicesDir); err == nil {
+		prefix := instanceName + "-"
+		exactMatch := instanceName + ".env"
+		for _, entry := range entries {
+			name := entry.Name()
+			if strings.HasSuffix(name, ".env") {
+				// Match exact instance name or prefix pattern
+				if name == exactMatch || strings.HasPrefix(name, prefix) {
+					files = append(files, filepath.Join(servicesDir, name))
+				}
+			}
+		}
+	}
+
+	return files
+}
+
 // EnsureDir ensures the env file directory exists
 func (m *Manager) EnsureDir(envPath string) error {
 	dir := filepath.Dir(envPath)

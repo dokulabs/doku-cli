@@ -209,3 +209,20 @@ func (nm *NetworkManager) IsNetworkHealthy(networkName string) (bool, error) {
 	// Basic health check: network exists and has proper driver
 	return network.Driver == "bridge", nil
 }
+
+// IsContainerConnected checks if a container is connected to a network
+func (nm *NetworkManager) IsContainerConnected(networkName, containerName string) (bool, error) {
+	network, err := nm.GetNetworkByName(networkName)
+	if err != nil {
+		return false, err
+	}
+
+	// Check if container is in the network's containers map
+	for _, endpoint := range network.Containers {
+		if endpoint.Name == containerName {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}

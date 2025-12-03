@@ -22,22 +22,31 @@ var (
 
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
-	Short: "Uninstall Doku and clean up everything",
-	Long: `Uninstall Doku and clean up all resources including:
+	Short: "Uninstall Doku and clean up containers",
+	Long: `Uninstall Doku and clean up containers and configuration.
+
+This will remove:
   • Docker containers (Traefik and all services)
-  • Docker volumes
   • Docker network
-  • Configuration directory (~/.doku/)
-  • SSL certificates (with instructions)
-  • DNS entries (with instructions)
-  • Doku binary (with OS-specific commands)`,
+  • Configuration file (~/.doku/config.toml)
+  • SSL certificates
+
+Data is preserved for safety:
+  • Docker volumes (your data) are NOT removed
+  • Environment files (~/.doku/services/*.env) are NOT removed
+
+After uninstall, manual cleanup instructions will be shown if you want to
+permanently delete the data.
+
+Use --force to skip confirmation prompts.
+Use --all to also show instructions for removing mkcert CA certificates.`,
 	RunE: runUninstall,
 }
 
 func init() {
 	rootCmd.AddCommand(uninstallCmd)
 	uninstallCmd.Flags().BoolVarP(&uninstallForce, "force", "f", false, "Skip confirmation prompts")
-	uninstallCmd.Flags().BoolVarP(&uninstallAll, "all", "a", false, "Remove everything including mkcert CA certificates")
+	uninstallCmd.Flags().BoolVarP(&uninstallAll, "all", "a", false, "Show instructions for removing mkcert CA certificates")
 }
 
 func runUninstall(cmd *cobra.Command, args []string) error {
@@ -49,26 +58,23 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	green := color.New(color.FgGreen).SprintFunc()
 	cyan := color.New(color.FgCyan).SprintFunc()
 
-	fmt.Printf("\n%s\n\n", red("⚠️  DANGER: Doku Uninstall"))
-	fmt.Println(red("⚠️  WARNING: This action CANNOT be undone!"))
-	fmt.Println()
+	fmt.Printf("\n%s\n\n", yellow("⚠️  Doku Uninstall"))
 	fmt.Println("This will remove:")
 	fmt.Printf("  • All Docker containers managed by Doku\n")
 	fmt.Printf("  • Doku Docker network\n")
-	fmt.Printf("  • Configuration directory (~/.doku/)\n")
-	fmt.Printf("  • Docker volumes (you will be asked separately)\n")
-
-	if uninstallAll {
-		fmt.Printf("  • mkcert CA certificates (--all flag)\n")
-	}
-
+	fmt.Printf("  • Configuration file (~/.doku/config.toml)\n")
+	fmt.Printf("  • SSL certificates\n")
+	fmt.Println()
+	fmt.Println(green("Data preserved for safety:"))
+	fmt.Printf("  • Docker volumes (your data)\n")
+	fmt.Printf("  • Environment files (~/.doku/services/*.env)\n")
 	fmt.Println()
 
 	// Confirmation
 	if !uninstallForce {
 		confirm := false
 		prompt := &survey.Confirm{
-			Message: red("⚠️  Are you absolutely sure you want to uninstall Doku? This CANNOT be undone!"),
+			Message: "Are you sure you want to uninstall Doku?",
 			Default: false,
 		}
 		if err := survey.AskOne(prompt, &confirm); err != nil {
@@ -83,26 +89,11 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 
-	// Ask about volume removal
-	removeVolumes := false
-	if !uninstallForce {
-		fmt.Println(yellow("⚠️  Docker volumes contain your data (databases, files, etc.)"))
-		volumePrompt := &survey.Confirm{
-			Message: "Do you want to remove all Docker volumes? (This will delete all data)",
-			Default: false,
-		}
-		if err := survey.AskOne(volumePrompt, &removeVolumes); err != nil {
-			return fmt.Errorf("volume prompt failed: %w", err)
-		}
-		fmt.Println()
-	} else {
-		// Force mode removes volumes by default
-		removeVolumes = true
-	}
-
-	// Track what was cleaned up
+	// Track what was cleaned up and what data is preserved
 	var cleaned []string
 	var remaining []string
+	var preservedVolumes []string
+	var preservedEnvFiles []string
 
 	// Initialize config manager
 	cfgMgr, err := config.New()
@@ -155,48 +146,21 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Step 2: Remove Docker volumes (only if user agreed)
-	if removeVolumes {
-		fmt.Printf("\n%s Removing Docker volumes...\n", cyan("→"))
-		if dockerClient != nil {
-			volumes, err := dockerClient.ListVolumes(ctx)
-			if err != nil {
-				fmt.Printf("  %s Failed to list volumes: %v\n", red("✗"), err)
-			} else {
-				volumesRemoved := 0
-				for _, volume := range volumes {
-					// Only process volumes with "doku-" prefix
-					if !strings.HasPrefix(volume.Name, "doku-") {
-						continue
-					}
-
-					if err := dockerClient.RemoveVolume(ctx, volume.Name); err != nil {
-						fmt.Printf("  %s Failed to remove volume %s: %v\n", red("✗"), volume.Name, err)
-					} else {
-						fmt.Printf("  %s Removed volume %s\n", green("✓"), volume.Name)
-						volumesRemoved++
-					}
-				}
-				if volumesRemoved > 0 {
-					cleaned = append(cleaned, fmt.Sprintf("%d Docker volume(s)", volumesRemoved))
+	// Step 2: List Docker volumes (but don't remove them)
+	fmt.Printf("\n%s Checking Docker volumes (preserving data)...\n", cyan("→"))
+	if dockerClient != nil {
+		volumes, err := dockerClient.ListVolumes(ctx)
+		if err != nil {
+			fmt.Printf("  %s Failed to list volumes: %v\n", red("✗"), err)
+		} else {
+			for _, volume := range volumes {
+				// Only count volumes with "doku-" prefix
+				if strings.HasPrefix(volume.Name, "doku-") {
+					preservedVolumes = append(preservedVolumes, volume.Name)
 				}
 			}
-		}
-	} else {
-		fmt.Printf("\n%s Skipping Docker volumes (keeping your data)\n", cyan("→"))
-		// Count how many volumes would have been kept
-		if dockerClient != nil {
-			volumes, err := dockerClient.ListVolumes(ctx)
-			if err == nil {
-				volumesKept := 0
-				for _, volume := range volumes {
-					if strings.HasPrefix(volume.Name, "doku-") {
-						volumesKept++
-					}
-				}
-				if volumesKept > 0 {
-					fmt.Printf("  %s Preserved %d Docker volume(s) with your data\n", green("✓"), volumesKept)
-				}
+			if len(preservedVolumes) > 0 {
+				fmt.Printf("  %s Preserved %d Docker volume(s) with your data\n", green("✓"), len(preservedVolumes))
 			}
 		}
 	}
@@ -215,28 +179,84 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Step 4: Remove config directory
-	fmt.Printf("\n%s Removing configuration directory...\n", cyan("→"))
+	// Step 4: List env files (but don't remove them)
+	fmt.Printf("\n%s Checking environment files (preserving data)...\n", cyan("→"))
 	if cfgMgr != nil {
 		dokuDir := cfgMgr.GetDokuDir()
-		if _, err := os.Stat(dokuDir); err == nil {
-			if err := os.RemoveAll(dokuDir); err != nil {
-				fmt.Printf("  %s Failed to remove %s: %v\n", red("✗"), dokuDir, err)
-				remaining = append(remaining, fmt.Sprintf("Config directory: %s", dokuDir))
-			} else {
-				fmt.Printf("  %s Removed %s\n", green("✓"), dokuDir)
-				cleaned = append(cleaned, "Configuration directory")
+		servicesDir := filepath.Join(dokuDir, "services")
+		projectsDir := filepath.Join(dokuDir, "projects")
+
+		// Check services env files
+		if entries, err := os.ReadDir(servicesDir); err == nil {
+			for _, entry := range entries {
+				if strings.HasSuffix(entry.Name(), ".env") {
+					preservedEnvFiles = append(preservedEnvFiles, filepath.Join(servicesDir, entry.Name()))
+				}
 			}
-		} else {
-			fmt.Printf("  %s Config directory not found (already clean)\n", green("✓"))
+		}
+
+		// Check projects env files
+		if entries, err := os.ReadDir(projectsDir); err == nil {
+			for _, entry := range entries {
+				if strings.HasSuffix(entry.Name(), ".env") {
+					preservedEnvFiles = append(preservedEnvFiles, filepath.Join(projectsDir, entry.Name()))
+				}
+			}
+		}
+
+		if len(preservedEnvFiles) > 0 {
+			fmt.Printf("  %s Preserved %d environment file(s)\n", green("✓"), len(preservedEnvFiles))
 		}
 	}
 
-	// Step 5: Uninstall mkcert CA (if --all flag)
-	if uninstallAll {
-		fmt.Printf("\n%s Uninstalling mkcert CA certificates...\n", cyan("→"))
-		// This is optional and requires manual intervention
-		remaining = append(remaining, "mkcert CA certificates - Run: mkcert -uninstall")
+	// Step 5: Remove config file and certs (but keep env files)
+	fmt.Printf("\n%s Removing configuration and certificates...\n", cyan("→"))
+	if cfgMgr != nil {
+		dokuDir := cfgMgr.GetDokuDir()
+
+		// Remove config.toml
+		configPath := filepath.Join(dokuDir, "config.toml")
+		if _, err := os.Stat(configPath); err == nil {
+			if err := os.Remove(configPath); err != nil {
+				fmt.Printf("  %s Failed to remove %s: %v\n", red("✗"), configPath, err)
+			} else {
+				fmt.Printf("  %s Removed %s\n", green("✓"), configPath)
+				cleaned = append(cleaned, "Configuration file")
+			}
+		}
+
+		// Remove certs directory
+		certsDir := filepath.Join(dokuDir, "certs")
+		if _, err := os.Stat(certsDir); err == nil {
+			if err := os.RemoveAll(certsDir); err != nil {
+				fmt.Printf("  %s Failed to remove %s: %v\n", red("✗"), certsDir, err)
+			} else {
+				fmt.Printf("  %s Removed %s\n", green("✓"), certsDir)
+				cleaned = append(cleaned, "SSL certificates")
+			}
+		}
+
+		// Remove traefik directory
+		traefikDir := filepath.Join(dokuDir, "traefik")
+		if _, err := os.Stat(traefikDir); err == nil {
+			if err := os.RemoveAll(traefikDir); err != nil {
+				fmt.Printf("  %s Failed to remove %s: %v\n", red("✗"), traefikDir, err)
+			} else {
+				fmt.Printf("  %s Removed %s\n", green("✓"), traefikDir)
+				cleaned = append(cleaned, "Traefik configuration")
+			}
+		}
+
+		// Remove catalog directory
+		catalogDir := filepath.Join(dokuDir, "catalog")
+		if _, err := os.Stat(catalogDir); err == nil {
+			if err := os.RemoveAll(catalogDir); err != nil {
+				fmt.Printf("  %s Failed to remove %s: %v\n", red("✗"), catalogDir, err)
+			} else {
+				fmt.Printf("  %s Removed %s\n", green("✓"), catalogDir)
+				cleaned = append(cleaned, "Catalog cache")
+			}
+		}
 	}
 
 	// Step 6: Remove Doku binaries
@@ -261,7 +281,6 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	// Get the current executable path
 	currentExe, err := os.Executable()
 	if err != nil {
-		// If we can't determine the current executable, continue without self-delete detection
 		currentExe = ""
 	} else {
 		if resolved, err := filepath.EvalSymlinks(currentExe); err == nil {
@@ -270,24 +289,21 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	}
 
 	selfDeleteFailed := false
+	var pathsToRemoveAfterExit []string
 	for _, binPath := range binaryPaths {
 		if _, err := os.Stat(binPath); err == nil {
-			// Resolve symlinks for comparison
 			resolvedPath := binPath
 			if resolved, err := filepath.EvalSymlinks(binPath); err == nil {
 				resolvedPath = resolved
 			}
 
-			// File exists, try to remove it
 			if err := os.Remove(binPath); err != nil {
-				// Check if this is the currently running binary
 				if resolvedPath == currentExe {
-					// Can't delete currently running binary on Unix systems
 					selfDeleteFailed = true
-					remaining = append(remaining, fmt.Sprintf("Binary: %s (currently running - will be removed after this command exits)", binPath))
+					pathsToRemoveAfterExit = append(pathsToRemoveAfterExit, binPath)
+					remaining = append(remaining, fmt.Sprintf("Binary: %s (currently running)", binPath))
 				} else if os.IsPermission(err) {
-					// If removal fails due to permissions, suggest sudo
-					remaining = append(remaining, fmt.Sprintf("Binary: %s (requires elevated permissions: sudo rm %s)", binPath, binPath))
+					remaining = append(remaining, fmt.Sprintf("Binary: %s (requires sudo)", binPath))
 				} else {
 					fmt.Printf("  %s Failed to remove %s: %v\n", red("✗"), binPath, err)
 					remaining = append(remaining, fmt.Sprintf("Binary: %s", binPath))
@@ -303,18 +319,8 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		cleaned = append(cleaned, fmt.Sprintf("%d binary/binaries", binariesRemoved))
 	}
 
-	// Store paths for deferred removal
-	var pathsToRemoveAfterExit []string
-	if selfDeleteFailed {
-		for _, binPath := range binaryPaths {
-			if _, err := os.Stat(binPath); err == nil {
-				pathsToRemoveAfterExit = append(pathsToRemoveAfterExit, binPath)
-			}
-		}
-	}
-
 	// Print summary
-	fmt.Printf("\n%s\n\n", green("✓ Cleanup Complete"))
+	fmt.Printf("\n%s\n\n", green("✓ Uninstall Complete"))
 
 	if len(cleaned) > 0 {
 		fmt.Println(green("Removed:"))
@@ -324,10 +330,46 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 
-	// Print remaining items with OS-specific instructions
-	if len(remaining) > 0 {
-		fmt.Println(yellow("Additional Manual Steps Required:"))
+	// Show preserved data
+	if len(preservedVolumes) > 0 || len(preservedEnvFiles) > 0 {
+		fmt.Println(green("Data preserved for safety:"))
+		if len(preservedVolumes) > 0 {
+			fmt.Printf("  • %d Docker volume(s)\n", len(preservedVolumes))
+		}
+		if len(preservedEnvFiles) > 0 {
+			fmt.Printf("  • %d environment file(s)\n", len(preservedEnvFiles))
+		}
 		fmt.Println()
+	}
+
+	// Show cleanup instructions for preserved data
+	if len(preservedVolumes) > 0 || len(preservedEnvFiles) > 0 {
+		fmt.Println(yellow("To permanently delete your data (cannot be undone):"))
+		fmt.Println()
+
+		if len(preservedVolumes) > 0 {
+			fmt.Println(color.New(color.Bold).Sprint("Docker volumes:"))
+			fmt.Printf("  %s\n", cyan("# Remove all doku volumes"))
+			fmt.Printf("  %s\n", cyan("docker volume ls -q | grep doku- | xargs docker volume rm"))
+			fmt.Println()
+			fmt.Println("  Or remove individually:")
+			for _, vol := range preservedVolumes {
+				fmt.Printf("  docker volume rm %s\n", vol)
+			}
+			fmt.Println()
+		}
+
+		if len(preservedEnvFiles) > 0 {
+			fmt.Println(color.New(color.Bold).Sprint("Environment files:"))
+			dokuDir := cfgMgr.GetDokuDir()
+			fmt.Printf("  %s\n", cyan(fmt.Sprintf("rm -rf %s/services/*.env %s/projects/*.env", dokuDir, dokuDir)))
+			fmt.Println()
+		}
+	}
+
+	// Print remaining items
+	if len(remaining) > 0 {
+		fmt.Println(yellow("Manual steps required:"))
 		for _, item := range remaining {
 			fmt.Printf("  • %s\n", item)
 		}
@@ -335,46 +377,37 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	}
 
 	// DNS entries
-	fmt.Println(yellow("Manual Cleanup Recommendations:"))
+	fmt.Println(yellow("Additional cleanup (optional):"))
 	fmt.Println()
 
-	nextNum := 1
-	fmt.Printf("%s DNS Entries (in /etc/hosts or resolver)\n", yellow(fmt.Sprintf("%d.", nextNum)))
+	fmt.Printf("%s DNS Entries (in /etc/hosts)\n", yellow("1."))
 	switch runtime.GOOS {
-	case "darwin": // macOS
-		fmt.Println("   Remove entries from /etc/hosts:")
+	case "darwin":
 		fmt.Printf("   %s\n", cyan("sudo sed -i '' '/doku.local/d' /etc/hosts"))
-		fmt.Println()
 		fmt.Println("   If using resolver:")
 		fmt.Printf("   %s\n", cyan("sudo rm -f /etc/resolver/doku.local"))
 	case "linux":
-		fmt.Println("   Remove entries from /etc/hosts:")
 		fmt.Printf("   %s\n", cyan("sudo sed -i '/doku.local/d' /etc/hosts"))
 	case "windows":
-		fmt.Println("   Remove entries from hosts file:")
 		fmt.Printf("   %s\n", cyan(`notepad C:\Windows\System32\drivers\etc\hosts`))
 		fmt.Println("   Then manually remove lines containing 'doku.local'")
 	}
 	fmt.Println()
 
 	// mkcert certificates
-	if !uninstallAll {
-		nextNum++
-		fmt.Printf("%s mkcert CA Certificates (optional)\n", yellow(fmt.Sprintf("%d.", nextNum)))
-		fmt.Println("   To remove the local CA certificates:")
+	if uninstallAll {
+		fmt.Printf("%s mkcert CA Certificates\n", yellow("2."))
 		fmt.Printf("   %s\n", cyan("mkcert -uninstall"))
 		fmt.Println("   Note: This will affect other apps using mkcert")
 		fmt.Println()
 	}
 
-	// If we couldn't delete the currently running binary, provide a command to do it
-	if len(pathsToRemoveAfterExit) > 0 {
-		fmt.Println(yellow("\nTo complete the uninstall, run this command after Doku exits:"))
+	// If we couldn't delete the currently running binary
+	if selfDeleteFailed && len(pathsToRemoveAfterExit) > 0 {
+		fmt.Println(yellow("To remove the doku binary after this command exits:"))
 		switch runtime.GOOS {
 		case "darwin", "linux":
-			cmdParts := []string{"rm", "-f"}
-			cmdParts = append(cmdParts, pathsToRemoveAfterExit...)
-			fmt.Printf("   %s\n", cyan(strings.Join(cmdParts, " ")))
+			fmt.Printf("   %s\n", cyan(fmt.Sprintf("rm -f %s", strings.Join(pathsToRemoveAfterExit, " "))))
 		case "windows":
 			for _, path := range pathsToRemoveAfterExit {
 				fmt.Printf("   %s\n", cyan(fmt.Sprintf("del %s", path)))

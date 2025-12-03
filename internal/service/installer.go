@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -70,6 +71,10 @@ type InstallOptions struct {
 	AutoInstallDeps  bool // If true, auto-install dependencies without prompting
 	IsDepend         bool // Internal: true if this is being installed as a dependency
 	Replace          bool // If true, replace existing instance without prompting
+
+	// Data reuse options
+	ReuseExistingData bool // If true, reuse existing volumes and env files
+	ForceCleanData    bool // If true, delete existing data without prompting
 }
 
 // Install installs a service from the catalog
@@ -154,14 +159,59 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		fmt.Println()
 	}
 
-	// Step 2: Check if multi-container service (Phase 3)
+	// Step 2: Check for existing data (volumes, env files) from previous installation
+	var existingData *ExistingData
+	if !opts.IsDepend {
+		existingData, err = i.checkExistingData(instanceName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check existing data: %w", err)
+		}
+
+		if existingData.HasData {
+			// If force clean data, delete everything
+			if opts.ForceCleanData {
+				color.Cyan("Cleaning existing data for '%s'...", instanceName)
+				if err := i.deleteExistingData(instanceName, existingData); err != nil {
+					return nil, fmt.Errorf("failed to delete existing data: %w", err)
+				}
+				existingData = nil // Reset since we deleted it
+			} else if !opts.ReuseExistingData {
+				// Prompt user
+				reuseData, shouldProceed := i.promptForExistingData(instanceName, existingData)
+				if !shouldProceed {
+					return nil, fmt.Errorf("installation cancelled by user")
+				}
+
+				if !reuseData {
+					// User wants to delete existing data
+					color.Cyan("Cleaning existing data...")
+					if err := i.deleteExistingData(instanceName, existingData); err != nil {
+						return nil, fmt.Errorf("failed to delete existing data: %w", err)
+					}
+					existingData = nil // Reset since we deleted it
+				} else {
+					color.Green("✓ Will reuse existing data")
+					fmt.Println()
+				}
+			}
+		}
+	}
+
+	// Step 3: Check if multi-container service (Phase 3)
 	if spec.IsMultiContainer() {
-		return i.installMultiContainer(opts, spec, instanceName, version)
+		return i.installMultiContainer(opts, spec, instanceName, version, existingData)
 	}
 
 	// Single-container installation (existing logic)
-	// Merge environment variables
+	// Merge environment variables: catalog defaults + user overrides
 	env := i.mergeEnvironment(spec.Environment, opts.Environment)
+
+	// If we have existing env data and user chose to reuse, merge with existing
+	if existingData != nil && len(existingData.EnvVars) > 0 {
+		// Existing values take precedence (user's data is preserved)
+		env = i.mergeWithExistingEnv(existingData.EnvVars, env)
+		color.Cyan("Merged %d existing environment variables", len(existingData.EnvVars))
+	}
 
 	// Add monitoring instrumentation environment variables
 	cfg, _ := i.configMgr.Get()
@@ -566,4 +616,148 @@ func (i *Installer) updateDNS(instanceName string) error {
 
 	fmt.Printf("✓ Added %s.%s to /etc/hosts\n", instanceName, i.domain)
 	return nil
+}
+
+// ExistingData holds information about existing volumes and env files
+type ExistingData struct {
+	Volumes      []string // List of existing volume names
+	EnvFiles     []string // List of existing env file paths
+	HasData      bool     // True if any existing data was found
+	EnvVars      map[string]string // Existing env variables (if env file exists)
+}
+
+// checkExistingData checks for existing volumes and env files for an instance
+func (i *Installer) checkExistingData(instanceName string) (*ExistingData, error) {
+	ctx := context.Background()
+	data := &ExistingData{
+		EnvVars: make(map[string]string),
+	}
+
+	// Check for existing volumes with prefix "doku-<instanceName>-"
+	volumePrefix := fmt.Sprintf("doku-%s-", instanceName)
+	volumes, err := i.dockerClient.ListVolumesByPrefix(ctx, volumePrefix)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list volumes: %w", err)
+	}
+
+	for _, vol := range volumes {
+		data.Volumes = append(data.Volumes, vol.Name)
+	}
+
+	// Check for existing env files (both single-container and multi-container)
+	envMgr := envfile.NewManager(i.configMgr.GetDokuDir())
+
+	// Check main env file for single-container services
+	envPath := envMgr.GetServiceEnvPath(instanceName, "")
+	if envMgr.Exists(envPath) {
+		data.EnvFiles = append(data.EnvFiles, envPath)
+		// Load existing env vars for single-container merge
+		if existingEnv, err := envMgr.Load(envPath); err == nil {
+			data.EnvVars = existingEnv
+		}
+	}
+
+	// Check for multi-container env files (pattern: <instanceName>-<container>.env)
+	multiContainerEnvFiles := envMgr.FindEnvFilesByPrefix(instanceName)
+	for _, envFile := range multiContainerEnvFiles {
+		if envFile != envPath { // Avoid duplicates
+			data.EnvFiles = append(data.EnvFiles, envFile)
+		}
+	}
+
+	data.HasData = len(data.Volumes) > 0 || len(data.EnvFiles) > 0
+	return data, nil
+}
+
+// promptForExistingData prompts the user about what to do with existing data
+// Returns: reuseData (true = reuse, false = delete), shouldProceed (false = cancel)
+func (i *Installer) promptForExistingData(instanceName string, data *ExistingData) (reuseData bool, shouldProceed bool) {
+	fmt.Println()
+	color.Yellow("⚠️  Existing data found for '%s':", instanceName)
+	fmt.Println()
+
+	if len(data.Volumes) > 0 {
+		fmt.Printf("  Docker volumes (%d):\n", len(data.Volumes))
+		for _, vol := range data.Volumes {
+			fmt.Printf("    • %s\n", vol)
+		}
+	}
+
+	if len(data.EnvFiles) > 0 {
+		fmt.Printf("  Environment files (%d):\n", len(data.EnvFiles))
+		for _, envFile := range data.EnvFiles {
+			fmt.Printf("    • %s\n", envFile)
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("What would you like to do?")
+	fmt.Println("  [R] Reuse existing data (recommended)")
+	fmt.Println("  [D] Delete and start fresh")
+	fmt.Println("  [C] Cancel installation")
+	fmt.Println()
+	fmt.Print("Choice [R/d/c]: ")
+
+	var response string
+	fmt.Scanln(&response)
+	response = strings.ToLower(strings.TrimSpace(response))
+
+	switch response {
+	case "", "r", "reuse":
+		return true, true
+	case "d", "delete":
+		return false, true
+	case "c", "cancel":
+		return false, false
+	default:
+		// Default to reuse for safety
+		return true, true
+	}
+}
+
+// deleteExistingData removes existing volumes and env files
+func (i *Installer) deleteExistingData(instanceName string, data *ExistingData) error {
+	ctx := context.Background()
+
+	// Delete volumes
+	for _, vol := range data.Volumes {
+		fmt.Printf("  Deleting volume %s...\n", vol)
+		if err := i.dockerClient.RemoveVolume(ctx, vol); err != nil {
+			// Warn but don't fail - volume might be in use
+			color.Yellow("    Warning: Could not delete volume %s: %v", vol, err)
+		} else {
+			color.Green("    ✓ Deleted %s", vol)
+		}
+	}
+
+	// Delete env files
+	envMgr := envfile.NewManager(i.configMgr.GetDokuDir())
+	for _, envFile := range data.EnvFiles {
+		fmt.Printf("  Deleting %s...\n", envFile)
+		if err := envMgr.Delete(envFile); err != nil {
+			color.Yellow("    Warning: Could not delete %s: %v", envFile, err)
+		} else {
+			color.Green("    ✓ Deleted %s", envFile)
+		}
+	}
+
+	fmt.Println()
+	return nil
+}
+
+// mergeWithExistingEnv merges new environment with existing, keeping existing values
+func (i *Installer) mergeWithExistingEnv(existingEnv, newEnv map[string]string) map[string]string {
+	merged := make(map[string]string)
+
+	// Start with new (catalog default) environment
+	for k, v := range newEnv {
+		merged[k] = v
+	}
+
+	// Override with existing values (user's data takes precedence)
+	for k, v := range existingEnv {
+		merged[k] = v
+	}
+
+	return merged
 }

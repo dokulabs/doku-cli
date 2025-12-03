@@ -93,6 +93,7 @@ func (i *Installer) installMultiContainer(
 	spec *types.ServiceSpec,
 	instanceName string,
 	version string,
+	existingData *ExistingData,
 ) (*types.Instance, error) {
 	fmt.Println()
 	color.Cyan("Installing multi-container service: %s", instanceName)
@@ -126,6 +127,9 @@ func (i *Installer) installMultiContainer(
 		}
 	}
 
+	// Prepare env file manager for merging existing data
+	envMgr := envfile.NewManager(i.configMgr.GetDokuDir())
+
 	// Install each container
 	for idx, containerSpec := range spec.Containers {
 		isPrimary := (primaryContainer != nil && containerSpec.Name == primaryContainer.Name)
@@ -149,9 +153,18 @@ func (i *Installer) installMultiContainer(
 			env = i.mergeEnvironment(env, monitoringEnv)
 		}
 
-		// Save container environment to env file
-		envMgr := envfile.NewManager(i.configMgr.GetDokuDir())
+		// Check for existing env file for this container and merge if reusing data
 		containerEnvPath := envMgr.GetServiceEnvPath(instanceName, containerSpec.Name)
+		if existingData != nil && envMgr.Exists(containerEnvPath) {
+			existingEnv, err := envMgr.Load(containerEnvPath)
+			if err == nil && len(existingEnv) > 0 {
+				// Existing values take precedence
+				env = i.mergeWithExistingEnv(existingEnv, env)
+				color.Cyan("  Merged existing environment for %s", containerSpec.Name)
+			}
+		}
+
+		// Save container environment to env file
 		if err := envMgr.Save(containerEnvPath, env); err != nil {
 			i.cleanupMultiContainerInstall(instance)
 			return nil, fmt.Errorf("failed to save environment file for %s: %w", containerSpec.Name, err)

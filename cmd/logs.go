@@ -22,6 +22,7 @@ var (
 	logsTimestamps bool
 	logsContainer  string
 	logsAll        bool
+	logsSince      string
 )
 
 var logsCmd = &cobra.Command{
@@ -35,6 +36,8 @@ Examples:
   doku logs postgres-main                  # Show recent logs
   doku logs postgres-main -f               # Stream logs (follow mode)
   doku logs postgres-main --tail 50        # Show last 50 lines
+  doku logs postgres-main --since 1h       # Logs from last hour
+  doku logs postgres-main --since 30m      # Logs from last 30 minutes
   doku logs postgres-main -f --tail 20     # Follow, starting with last 20 lines`,
 	Args: cobra.ExactArgs(1),
 	RunE: runLogs,
@@ -48,6 +51,7 @@ func init() {
 	logsCmd.Flags().BoolVarP(&logsTimestamps, "timestamps", "t", false, "Show timestamps")
 	logsCmd.Flags().StringVarP(&logsContainer, "container", "c", "", "Specific container name (for multi-container services)")
 	logsCmd.Flags().BoolVarP(&logsAll, "all", "a", false, "Show logs from all containers (multi-container only)")
+	logsCmd.Flags().StringVar(&logsSince, "since", "", "Show logs since timestamp (e.g. 1h, 30m, 2h30m)")
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {

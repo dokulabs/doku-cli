@@ -27,6 +27,11 @@ Doku is a CLI tool that simplifies running and managing Docker-based services lo
 - 🔌 **Port mapping** - Map container ports to host for direct access via localhost
 - 🐳 **Custom projects** - Build and run from your own Dockerfiles with `--path` flag
 - ⚡ **Dynamic configuration** - Update environment variables without rebuilding containers
+- 💾 **Backup & Restore** - Backup and restore service data and configuration
+- 🔬 **Health monitoring** - Detailed health checks and resource usage statistics
+- 📊 **Dependency graph** - Visualize service dependencies
+- 🌐 **Network inspection** - Inspect Docker networks and service connections
+- 📝 **Service profiles** - Development and production configuration profiles
 
 ## Quick Start
 
@@ -155,6 +160,9 @@ doku restart postgres
 # View logs
 doku logs postgres -f
 
+# View logs from last hour
+doku logs postgres --since 1h
+
 # Get detailed service info
 doku info postgres
 
@@ -163,6 +171,133 @@ doku env postgres
 
 # Remove a service
 doku remove postgres
+
+# Remove service but preserve data volumes
+doku remove postgres --preserve-data
+```
+
+### Health & Monitoring
+
+```bash
+# Show health status of all services
+doku health
+
+# Show detailed health for a specific service
+doku health postgres
+
+# Display resource usage statistics
+doku stats
+
+# Continuous stats monitoring
+doku stats --watch
+
+# Stats for specific service
+doku stats postgres
+```
+
+### Backup & Restore
+
+```bash
+# Backup a service
+doku backup postgres
+
+# Backup to specific file
+doku backup postgres -o /path/to/backup.tar.gz
+
+# List available backups
+doku backup list
+
+# Restore from backup
+doku restore /path/to/backup.tar.gz
+
+# Restore with preview (dry-run)
+doku restore backup.tar.gz --dry-run
+```
+
+### Service Upgrades
+
+```bash
+# Upgrade service to latest version
+doku service upgrade postgres
+
+# Upgrade to specific version
+doku service upgrade postgres --version 16
+
+# Upgrade with backup first
+doku service upgrade postgres --backup
+```
+
+### Service Profiles
+
+```bash
+# Create default profiles for a service
+doku profile create postgres
+
+# Show profiles for a service
+doku profile show postgres
+
+# Apply production profile
+doku profile apply postgres --production
+
+# Apply development profile
+doku profile apply postgres --development
+
+# List all services with profiles
+doku profile list
+```
+
+### Network & Dependencies
+
+```bash
+# View dependency graph
+doku graph
+
+# Export as Graphviz DOT format
+doku graph --format dot
+
+# Export as Mermaid diagram
+doku graph --format mermaid
+
+# Inspect Doku network
+doku network inspect
+
+# List networks
+doku network list
+
+# Show service connections
+doku network connections
+```
+
+### Execute Commands in Containers
+
+```bash
+# Open shell in container
+doku exec postgres
+
+# Run specific command
+doku exec postgres psql -U postgres
+
+# Run as specific user
+doku exec postgres -u root bash
+
+# For multi-container services
+doku exec signoz --container frontend sh
+```
+
+### Configuration Import/Export
+
+```bash
+# Export configuration
+doku config export -o config.yaml
+
+# Export as JSON
+doku config export --format json -o config.json
+
+# Import configuration
+doku config import config.yaml
+
+# Import with preview (dry-run)
+doku config import config.yaml --dry-run
 ```
 
 ### Upgrade Doku CLI
@@ -234,7 +369,9 @@ Doku stores configuration in `~/.doku/`:
 ├── catalog/             # Service catalog
 ├── traefik/             # Traefik config
 ├── certs/               # SSL certificates
-└── services/            # Service definitions
+├── services/            # Service definitions
+├── profiles/            # Service profiles
+└── backups/             # Service backups
 ```
 
 ### Custom Domain
@@ -267,9 +404,48 @@ doku init --domain mydev.local
 | `doku start <service>` | Start a stopped service |
 | `doku stop <service>` | Stop a running service |
 | `doku restart <service>` | Restart a service |
+| `doku remove <service>` | Remove a service and its data |
+| `doku remove <service> --preserve-data` | Remove service but keep data volumes |
+| **Logs** | |
 | `doku logs <service>` | View service logs |
 | `doku logs <service> -f` | Follow service logs in real-time |
-| `doku remove <service>` | Remove a service and its data |
+| `doku logs <service> --since 1h` | Logs from last hour |
+| `doku logs <service> --tail 100` | Last 100 lines |
+| `doku logs <service> --all` | All containers (multi-container) |
+| **Health & Monitoring** | |
+| `doku health` | Show health status of all services |
+| `doku health <service>` | Show detailed health for a service |
+| `doku stats` | Display resource usage statistics |
+| `doku stats --watch` | Continuous stats monitoring |
+| `doku stats <service>` | Stats for specific service |
+| **Exec** | |
+| `doku exec <service>` | Open shell in container |
+| `doku exec <service> <command>` | Run command in container |
+| `doku exec <service> -u root bash` | Run as specific user |
+| **Backup & Restore** | |
+| `doku backup <service>` | Backup service data and config |
+| `doku backup <service> -o <file>` | Backup to specific file |
+| `doku backup list` | List available backups |
+| `doku restore <file>` | Restore from backup |
+| `doku restore <file> --dry-run` | Preview restore |
+| **Service Upgrades** | |
+| `doku service upgrade <service>` | Upgrade to latest version |
+| `doku service upgrade <service> -v 16` | Upgrade to specific version |
+| `doku service upgrade <service> --backup` | Backup before upgrade |
+| **Profiles** | |
+| `doku profile list` | List services with profiles |
+| `doku profile show <service>` | Show profiles for a service |
+| `doku profile create <service>` | Create default profiles |
+| `doku profile apply <service> --production` | Apply production profile |
+| `doku profile apply <service> --development` | Apply development profile |
+| **Network** | |
+| `doku network list` | List Doku networks |
+| `doku network inspect` | Inspect Doku network |
+| `doku network connections` | Show service connections |
+| **Dependency Graph** | |
+| `doku graph` | Display dependency graph |
+| `doku graph --format dot` | Export as Graphviz DOT |
+| `doku graph --format mermaid` | Export as Mermaid diagram |
 | **Environment Variables** | |
 | `doku env <service>` | Show environment variables |
 | `doku env <service> --show-values` | Show actual values (unmask sensitive data) |
@@ -287,8 +463,11 @@ doku init --domain mydev.local
 | `doku config list` | List all configuration settings |
 | `doku config get <key>` | Get a specific config value |
 | `doku config set <key> <value>` | Set a config value |
+| `doku config export` | Export configuration to file |
+| `doku config import <file>` | Import configuration from file |
 | **Cleanup** | |
 | `doku uninstall` | Uninstall Doku and clean up everything |
+| `doku uninstall --preserve-data` | Uninstall but keep data volumes |
 
 ### Common Flags
 
@@ -312,6 +491,72 @@ doku init --domain mydev.local
 - `--internal` - Install as internal service (no external access)
 - `--skip-deps` - Skip dependency installation
 - `--no-auto-install-deps` - Prompt before installing dependencies
+
+### Logs Flags
+
+- `--follow, -f` - Follow log output (stream in real-time)
+- `--tail` - Number of lines to show from the end (default: all)
+- `--timestamps, -t` - Show timestamps
+- `--since` - Show logs since timestamp (e.g., 1h, 30m, 2h30m)
+- `--container, -c` - Specific container (for multi-container services)
+- `--all, -a` - Show logs from all containers (multi-container only)
+
+### Stats Flags
+
+- `--watch, -w` - Continuously update stats
+- `--interval` - Update interval in seconds (default: 2)
+
+### Exec Flags
+
+- `--container, -c` - Container name (for multi-container services)
+- `--interactive, -i` - Keep STDIN open (default: true)
+- `--tty, -t` - Allocate a pseudo-TTY (default: true)
+- `--user, -u` - Username or UID
+- `--workdir, -w` - Working directory inside the container
+
+### Backup Flags
+
+- `--output, -o` - Output file path
+- `--no-compress` - Don't compress the backup
+- `--env-only` - Only backup environment variables
+
+### Restore Flags
+
+- `--instance` - Target instance name (defaults to original)
+- `--overwrite` - Overwrite existing files
+- `--env-only` - Only restore environment variables
+- `--dry-run` - Preview without applying changes
+- `--yes, -y` - Skip confirmation prompt
+
+### Service Upgrade Flags
+
+- `--version, -v` - Target version to upgrade to
+- `--yes, -y` - Skip confirmation prompt
+- `--backup, -b` - Create backup before upgrade
+
+### Profile Apply Flags
+
+- `--profile, -p` - Profile name to apply
+- `--development` - Apply development profile
+- `--production` - Apply production profile
+
+### Config Export Flags
+
+- `--output, -o` - Output file path (default: stdout)
+- `--format, -f` - Output format (json, yaml) (default: yaml)
+- `--include-env` - Include environment variables (may contain secrets)
+- `--services-only` - Export only service instances
+
+### Config Import Flags
+
+- `--overwrite` - Overwrite existing configuration completely
+- `--dry-run` - Preview changes without applying
+- `--yes, -y` - Skip confirmation prompt
+
+### Graph Flags
+
+- `--format, -f` - Output format (text, dot, mermaid) (default: text)
+- `--detailed, -d` - Show detailed container information
 
 ### Project Flags
 
@@ -350,6 +595,9 @@ doku uninstall
 # Force uninstall without prompts
 doku uninstall --force
 
+# Uninstall but preserve data volumes
+doku uninstall --preserve-data
+
 # Uninstall and remove mkcert CA certificates
 doku uninstall --all
 ```
@@ -357,7 +605,7 @@ doku uninstall --all
 ### What Gets Removed Automatically:
 
 - ✅ All Docker containers managed by Doku
-- ✅ All Docker volumes created by Doku
+- ✅ All Docker volumes created by Doku (unless --preserve-data)
 - ✅ Doku Docker network
 - ✅ Configuration directory (`~/.doku/`)
 - ✅ Doku binaries (`doku` and `doku-cli`)

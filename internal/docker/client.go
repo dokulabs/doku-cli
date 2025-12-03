@@ -2,9 +2,11 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -171,12 +173,40 @@ func (c *Client) ContainerLogs(containerID string, follow bool) (io.ReadCloser, 
 }
 
 // ContainerStats returns resource usage statistics for a container
-func (c *Client) ContainerStats(containerID string) (container.StatsResponseReader, error) {
-	stats, err := c.cli.ContainerStats(c.ctx, containerID, false)
+func (c *Client) ContainerStats(ctx context.Context, containerID string) (*ContainerStatsResult, error) {
+	stats, err := c.cli.ContainerStats(ctx, containerID, false)
 	if err != nil {
-		return container.StatsResponseReader{}, fmt.Errorf("failed to get container stats: %w", err)
+		return nil, fmt.Errorf("failed to get container stats: %w", err)
 	}
-	return stats, nil
+	defer stats.Body.Close()
+
+	// Parse stats
+	var statsJSON container.StatsResponse
+	decoder := json.NewDecoder(stats.Body)
+	if err := decoder.Decode(&statsJSON); err != nil {
+		return nil, fmt.Errorf("failed to decode stats: %w", err)
+	}
+
+	result := &ContainerStatsResult{
+		MemoryUsage: statsJSON.MemoryStats.Usage,
+		MemoryLimit: statsJSON.MemoryStats.Limit,
+	}
+
+	// Calculate CPU percentage
+	cpuDelta := float64(statsJSON.CPUStats.CPUUsage.TotalUsage - statsJSON.PreCPUStats.CPUUsage.TotalUsage)
+	systemDelta := float64(statsJSON.CPUStats.SystemUsage - statsJSON.PreCPUStats.SystemUsage)
+	if systemDelta > 0 && cpuDelta > 0 {
+		result.CPUPercent = (cpuDelta / systemDelta) * float64(statsJSON.CPUStats.OnlineCPUs) * 100.0
+	}
+
+	return result, nil
+}
+
+// ContainerStatsResult contains parsed container statistics
+type ContainerStatsResult struct {
+	CPUPercent  float64
+	MemoryUsage uint64
+	MemoryLimit uint64
 }
 
 // ContainerExists checks if a container exists
@@ -483,6 +513,22 @@ func (c *Client) ListVolumesByLabel(ctx context.Context, labelKey, labelValue st
 	return volumes, nil
 }
 
+// ListVolumesByPrefix lists volumes whose names start with the given prefix
+func (c *Client) ListVolumesByPrefix(ctx context.Context, prefix string) ([]*volume.Volume, error) {
+	allVolumes, err := c.ListVolumes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var matchedVolumes []*volume.Volume
+	for _, vol := range allVolumes {
+		if strings.HasPrefix(vol.Name, prefix) {
+			matchedVolumes = append(matchedVolumes, vol)
+		}
+	}
+	return matchedVolumes, nil
+}
+
 // StopContainer stops a container by name or ID
 func (c *Client) StopContainer(ctx context.Context, containerID string) error {
 	timeout := 10 // 10 seconds timeout
@@ -576,4 +622,79 @@ func (c *Client) GetContainerLogsString(containerID string) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+// ExecOptions holds options for executing a command in a container
+type ExecOptions struct {
+	Container   string
+	Command     []string
+	Interactive bool
+	TTY         bool
+	User        string
+	WorkDir     string
+	Stdin       io.Reader
+	Stdout      io.Writer
+	Stderr      io.Writer
+}
+
+// Exec executes a command inside a running container
+func (c *Client) Exec(ctx context.Context, opts ExecOptions) error {
+	// Create exec configuration
+	execConfig := container.ExecOptions{
+		AttachStdin:  opts.Interactive,
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty:          opts.TTY,
+		Cmd:          opts.Command,
+		User:         opts.User,
+		WorkingDir:   opts.WorkDir,
+	}
+
+	// Create exec instance
+	execID, err := c.cli.ContainerExecCreate(ctx, opts.Container, execConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create exec: %w", err)
+	}
+
+	// Attach to exec instance
+	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, container.ExecAttachOptions{
+		Tty: opts.TTY,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to attach to exec: %w", err)
+	}
+	defer resp.Close()
+
+	// Handle I/O
+	errCh := make(chan error, 1)
+
+	// Copy output
+	go func() {
+		_, err := io.Copy(opts.Stdout, resp.Reader)
+		errCh <- err
+	}()
+
+	// Copy input if interactive
+	if opts.Interactive && opts.Stdin != nil {
+		go func() {
+			io.Copy(resp.Conn, opts.Stdin)
+		}()
+	}
+
+	// Wait for output to complete
+	if err := <-errCh; err != nil {
+		return fmt.Errorf("error during exec: %w", err)
+	}
+
+	// Check exit code
+	inspectResp, err := c.cli.ContainerExecInspect(ctx, execID.ID)
+	if err != nil {
+		return fmt.Errorf("failed to inspect exec: %w", err)
+	}
+
+	if inspectResp.ExitCode != 0 {
+		return fmt.Errorf("command exited with code %d", inspectResp.ExitCode)
+	}
+
+	return nil
 }
