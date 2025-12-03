@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/envfile"
 	"github.com/dokulabs/doku-cli/internal/project"
-	"github.com/dokulabs/doku-cli/pkg/types"
+	"github.com/dokulabs/doku-cli/internal/service"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -19,20 +19,18 @@ var (
 
 var envRefreshCmd = &cobra.Command{
 	Use:   "refresh <service>",
-	Short: "Refresh environment variables from .env.doku file",
-	Long: `Reload environment variables from the .env.doku file in the project directory.
+	Short: "Reload and apply environment variables from env file",
+	Long: `Reload environment variables from the service's env file and recreate the container.
 
 This command:
-  • Reads the .env.doku file from the project's path
-  • Updates the service configuration with the new variables
-  • Recreates the container to apply changes
+  • Reads the environment file (~/.doku/services/<service>.env)
+  • Recreates the container with the current environment variables
 
-This is useful when you've edited the .env.doku file and want to apply changes
-without manually running install again.
+This is useful when you've manually edited the env file and want to apply changes.
 
 Examples:
-  doku env refresh myapp       # Refresh env from .env.doku and recreate container
-  doku env refresh gw --yes    # Skip confirmation prompt`,
+  doku env refresh postgres     # Reload env from file and recreate container
+  doku env refresh myapp --yes  # Skip confirmation prompt`,
 	Args: cobra.ExactArgs(1),
 	RunE: runEnvRefresh,
 }
@@ -64,39 +62,41 @@ func runEnvRefresh(cmd *cobra.Command, args []string) error {
 	}
 	defer dockerClient.Close()
 
-	// Create service manager and get service
-	projectMgr, err := project.NewManager(dockerClient, cfgMgr)
+	// Create service manager
+	serviceMgr := service.NewManager(dockerClient, cfgMgr)
+
+	// Get instance
+	instance, err := serviceMgr.Get(serviceName)
 	if err != nil {
-		return fmt.Errorf("failed to create project manager: %w", err)
+		return fmt.Errorf("service '%s' not found. Use 'doku list' to see installed services", serviceName)
 	}
 
-	// Check if it's a custom project
-	cfg, err := cfgMgr.Get()
-	if err != nil {
-		return fmt.Errorf("failed to get config: %w", err)
+	isCustomProject := instance.ServiceType == "custom-project"
+
+	// Get env file path
+	envMgr := envfile.NewManager(cfgMgr.GetDokuDir())
+	var envPath string
+	if isCustomProject {
+		envPath = envMgr.GetProjectEnvPath(serviceName)
+	} else {
+		envPath = envMgr.GetServiceEnvPath(serviceName, "")
 	}
 
-	projectConfig, isCustomProject := cfg.Projects[serviceName]
-	if !isCustomProject {
-		return fmt.Errorf("environment refresh is only supported for custom projects")
-	}
-
-	// Check for .env.doku file
-	envDokuPath := filepath.Join(projectConfig.Path, ".env.doku")
-	if !project.FileExists(envDokuPath) {
-		return fmt.Errorf(".env.doku file not found at: %s", envDokuPath)
+	// Check if env file exists
+	if !envMgr.Exists(envPath) {
+		return fmt.Errorf("environment file not found: %s\nUse 'doku env edit %s' to create one", envPath, serviceName)
 	}
 
 	// Load environment variables from file
 	fmt.Println()
-	color.Cyan("Loading environment variables from .env.doku...")
-	fileEnv, err := project.LoadEnvFile(envDokuPath)
+	color.Cyan("Loading environment variables from %s...", envPath)
+	fileEnv, err := envMgr.Load(envPath)
 	if err != nil {
-		return fmt.Errorf("failed to load .env.doku: %w", err)
+		return fmt.Errorf("failed to load env file: %w", err)
 	}
 
 	if len(fileEnv) == 0 {
-		color.Yellow("⚠️  No environment variables found in .env.doku")
+		color.Yellow("⚠️  No environment variables found in env file")
 		return nil
 	}
 
@@ -104,7 +104,7 @@ func runEnvRefresh(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Show what will be loaded
-	color.New(color.Bold).Println("Environment variables to be loaded:")
+	color.New(color.Bold).Println("Environment variables to be applied:")
 	for key, value := range fileEnv {
 		if isSensitiveKey(key) {
 			fmt.Printf("  %s = %s %s\n",
@@ -121,7 +121,7 @@ func runEnvRefresh(cmd *cobra.Command, args []string) error {
 	if !envRefreshYes {
 		confirm := false
 		prompt := &survey.Confirm{
-			Message: "Update and recreate container with these environment variables?",
+			Message: "Recreate container with these environment variables?",
 			Default: true,
 		}
 		if err := survey.AskOne(prompt, &confirm); err != nil {
@@ -135,30 +135,28 @@ func runEnvRefresh(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 
-	// Update project environment in config
-	if err := cfgMgr.Update(func(c *types.Config) error {
-		if p, exists := c.Projects[serviceName]; exists {
-			p.Environment = fileEnv
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to update config: %w", err)
-	}
-
-	color.Green("✓ Configuration updated")
-	fmt.Println()
-
 	// Recreate container with new environment
 	color.Cyan("Recreating container to apply environment changes...")
 	fmt.Println()
 
-	runOpts := project.RunOptions{
-		Name:   serviceName,
-		Build:  false, // Don't rebuild image
-		Detach: true,
-	}
-	if err := projectMgr.Run(runOpts); err != nil {
-		return fmt.Errorf("failed to recreate container: %w", err)
+	if isCustomProject {
+		projectMgr, err := project.NewManager(dockerClient, cfgMgr)
+		if err != nil {
+			return fmt.Errorf("failed to create project manager: %w", err)
+		}
+
+		runOpts := project.RunOptions{
+			Name:   serviceName,
+			Build:  false, // Don't rebuild image
+			Detach: true,
+		}
+		if err := projectMgr.Run(runOpts); err != nil {
+			return fmt.Errorf("failed to recreate container: %w", err)
+		}
+	} else {
+		if err := serviceMgr.Recreate(serviceName); err != nil {
+			return fmt.Errorf("failed to recreate container: %w", err)
+		}
 	}
 
 	fmt.Println()

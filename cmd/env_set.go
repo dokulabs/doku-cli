@@ -6,8 +6,8 @@ import (
 
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/envfile"
 	"github.com/dokulabs/doku-cli/internal/service"
-	"github.com/dokulabs/doku-cli/pkg/types"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -20,6 +20,9 @@ var envSetCmd = &cobra.Command{
 	Use:   "set <service> <KEY=VALUE> [KEY2=VALUE2...]",
 	Short: "Set environment variables for a service",
 	Long: `Set or update environment variables for an installed service.
+
+Environment variables are saved to the service's env file:
+  ~/.doku/services/<service>.env
 
 The service will need to be restarted for changes to take effect.
 Use --restart to automatically restart the service.
@@ -84,9 +87,21 @@ func runEnvSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("service '%s' not found. Use 'doku list' to see installed services", instanceName)
 	}
 
-	// Update environment variables
-	if instance.Environment == nil {
-		instance.Environment = make(map[string]string)
+	isCustomProject := instance.ServiceType == "custom-project"
+
+	// Get env file path
+	envMgr := envfile.NewManager(cfgMgr.GetDokuDir())
+	var envPath string
+	if isCustomProject {
+		envPath = envMgr.GetProjectEnvPath(instanceName)
+	} else {
+		envPath = envMgr.GetServiceEnvPath(instanceName, "")
+	}
+
+	// Load existing env (for display purposes)
+	existingEnv, _ := envMgr.Load(envPath)
+	if existingEnv == nil {
+		existingEnv = make(map[string]string)
 	}
 
 	fmt.Println()
@@ -94,9 +109,7 @@ func runEnvSet(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	for key, value := range envMap {
-		oldValue := instance.Environment[key]
-		instance.Environment[key] = value
-
+		oldValue := existingEnv[key]
 		if oldValue != "" {
 			fmt.Printf("  %s: %s → %s\n", color.YellowString(key), color.RedString(oldValue), color.GreenString(value))
 		} else {
@@ -104,43 +117,22 @@ func runEnvSet(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Save changes
-	err = cfgMgr.Update(func(c *types.Config) error {
-		if inst, exists := c.Instances[instanceName]; exists {
-			if inst.Environment == nil {
-				inst.Environment = make(map[string]string)
-			}
-			for k, v := range envMap {
-				inst.Environment[k] = v
-			}
-		}
-		// Also check in Projects
-		if proj, exists := c.Projects[instanceName]; exists {
-			if proj.Environment == nil {
-				proj.Environment = make(map[string]string)
-			}
-			for k, v := range envMap {
-				proj.Environment[k] = v
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to save changes: %w", err)
+	// Update env file
+	if err := envfile.UpdateEnvFile(envPath, envMap); err != nil {
+		return fmt.Errorf("failed to update environment file: %w", err)
 	}
 
 	fmt.Println()
-	color.Green("✓ Environment variables updated")
+	color.Green("✓ Environment variables saved to %s", envPath)
 	fmt.Println()
 
 	// Restart if requested
 	if envSetRestart {
-		color.Cyan("Restarting service...")
-		if err := serviceMgr.Restart(instanceName); err != nil {
-			return fmt.Errorf("failed to restart service: %w", err)
+		color.Cyan("Recreating container to apply changes...")
+		if err := serviceMgr.Recreate(instanceName); err != nil {
+			return fmt.Errorf("failed to recreate service: %w", err)
 		}
-		color.Green("✓ Service restarted")
+		color.Green("✓ Service recreated with new environment")
 		fmt.Println()
 	} else {
 		color.Yellow("⚠️  Note: Service needs to be restarted for changes to take effect")

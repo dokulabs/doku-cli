@@ -5,8 +5,8 @@ import (
 
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/envfile"
 	"github.com/dokulabs/doku-cli/internal/service"
-	"github.com/dokulabs/doku-cli/pkg/types"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -18,7 +18,10 @@ var (
 var envUnsetCmd = &cobra.Command{
 	Use:   "unset <service> <KEY> [KEY2...]",
 	Short: "Unset environment variables for a service",
-	Long: `Remove environment variables from an installed service.
+	Long: `Remove environment variables from a service's env file.
+
+The env file is located at:
+  ~/.doku/services/<service>.env
 
 The service will need to be restarted for changes to take effect.
 
@@ -72,6 +75,23 @@ func runEnvUnset(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("service '%s' not found", instanceName)
 	}
 
+	isCustomProject := instance.ServiceType == "custom-project"
+
+	// Get env file path
+	envMgr := envfile.NewManager(cfgMgr.GetDokuDir())
+	var envPath string
+	if isCustomProject {
+		envPath = envMgr.GetProjectEnvPath(instanceName)
+	} else {
+		envPath = envMgr.GetServiceEnvPath(instanceName, "")
+	}
+
+	// Load existing env
+	existingEnv, err := envMgr.Load(envPath)
+	if err != nil {
+		return fmt.Errorf("failed to load environment file: %w", err)
+	}
+
 	fmt.Println()
 	color.Cyan("Removing environment variables from %s", instance.Name)
 	fmt.Println()
@@ -79,9 +99,9 @@ func runEnvUnset(cmd *cobra.Command, args []string) error {
 	// Remove keys
 	removedCount := 0
 	for _, key := range keys {
-		if _, exists := instance.Environment[key]; exists {
+		if _, exists := existingEnv[key]; exists {
 			fmt.Printf("  %s %s\n", color.RedString("✗"), key)
-			delete(instance.Environment, key)
+			delete(existingEnv, key)
 			removedCount++
 		} else {
 			fmt.Printf("  %s %s (not found)\n", color.YellowString("⚠"), key)
@@ -94,37 +114,22 @@ func runEnvUnset(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Save changes
-	err = cfgMgr.Update(func(c *types.Config) error {
-		if inst, exists := c.Instances[instanceName]; exists {
-			for _, key := range keys {
-				delete(inst.Environment, key)
-			}
-		}
-		// Also check in Projects
-		if proj, exists := c.Projects[instanceName]; exists {
-			for _, key := range keys {
-				delete(proj.Environment, key)
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to save changes: %w", err)
+	// Save updated env file
+	if err := envMgr.Save(envPath, existingEnv); err != nil {
+		return fmt.Errorf("failed to save environment file: %w", err)
 	}
 
 	fmt.Println()
-	color.Green("✓ Removed %d environment variable(s)", removedCount)
+	color.Green("✓ Removed %d environment variable(s) from %s", removedCount, envPath)
 	fmt.Println()
 
 	// Restart if requested
 	if envUnsetRestart {
-		color.Cyan("Restarting service...")
-		if err := serviceMgr.Restart(instanceName); err != nil {
-			return fmt.Errorf("failed to restart service: %w", err)
+		color.Cyan("Recreating container to apply changes...")
+		if err := serviceMgr.Recreate(instanceName); err != nil {
+			return fmt.Errorf("failed to recreate service: %w", err)
 		}
-		color.Green("✓ Service restarted")
+		color.Green("✓ Service recreated")
 		fmt.Println()
 	} else {
 		color.Yellow("⚠️  Note: Service needs to be restarted for changes to take effect")

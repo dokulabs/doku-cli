@@ -9,9 +9,12 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/go-connections/nat"
+	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/envfile"
 	"github.com/dokulabs/doku-cli/pkg/types"
+	"github.com/fatih/color"
 )
 
 // Manager handles service instance management
@@ -169,6 +172,11 @@ func (m *Manager) Stop(instanceName string) error {
 
 // Restart restarts a service instance
 func (m *Manager) Restart(instanceName string) error {
+	return m.RestartWithInit(instanceName, false, nil)
+}
+
+// RestartWithInit restarts a service instance with optional init container execution
+func (m *Manager) RestartWithInit(instanceName string, runInit bool, catalogMgr *catalog.Manager) error {
 	instance, err := m.configMgr.GetInstance(instanceName)
 	if err != nil {
 		return fmt.Errorf("instance not found: %w", err)
@@ -176,7 +184,12 @@ func (m *Manager) Restart(instanceName string) error {
 
 	// Handle multi-container services
 	if instance.IsMultiContainer {
-		return m.restartMultiContainerService(instance)
+		return m.restartMultiContainerServiceWithInit(instance, runInit, catalogMgr)
+	}
+
+	// Single container services don't support init containers
+	if runInit {
+		color.Yellow("⚠️  --run-init is only supported for multi-container services")
 	}
 
 	// Restart single container
@@ -192,7 +205,7 @@ func (m *Manager) Restart(instanceName string) error {
 }
 
 // Recreate recreates a service container to apply configuration changes (like environment variables)
-// This stops, removes, and recreates the container with the current configuration from the config file
+// This stops, removes, and recreates the container with environment from the env file
 func (m *Manager) Recreate(instanceName string) error {
 	instance, err := m.configMgr.GetInstance(instanceName)
 	if err != nil {
@@ -210,15 +223,21 @@ func (m *Manager) Recreate(instanceName string) error {
 		return fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	// Update environment variables from instance configuration
-	// Merge instance.Environment with existing container environment
-	if instance.Environment != nil && len(instance.Environment) > 0 {
-		// Build new environment array from instance configuration
-		envArray := []string{}
-		for key, value := range instance.Environment {
+	// Load environment from env file (primary source)
+	envMgr := envfile.NewManager(m.configMgr.GetDokuDir())
+	envPath := envMgr.GetServiceEnvPath(instanceName, "")
+	env, err := envMgr.Load(envPath)
+	if err != nil {
+		// Fall back to instance.Environment for backward compatibility
+		env = instance.Environment
+	}
+
+	// Build environment array
+	if len(env) > 0 {
+		envArray := make([]string, 0, len(env))
+		for key, value := range env {
 			envArray = append(envArray, fmt.Sprintf("%s=%s", key, value))
 		}
-		// Update the container info with new environment
 		containerInfo.Config.Env = envArray
 	}
 
@@ -586,6 +605,29 @@ func (m *Manager) stopMultiContainerService(instance *types.Instance) error {
 
 // restartMultiContainerService restarts all containers in a multi-container service
 func (m *Manager) restartMultiContainerService(instance *types.Instance) error {
+	return m.restartMultiContainerServiceWithInit(instance, false, nil)
+}
+
+// restartMultiContainerServiceWithInit restarts all containers with optional init container execution
+func (m *Manager) restartMultiContainerServiceWithInit(instance *types.Instance, runInit bool, catalogMgr *catalog.Manager) error {
+	// Run init containers if requested
+	if runInit && catalogMgr != nil {
+		// Get service spec to find init containers
+		spec, err := catalogMgr.GetServiceVersion(instance.ServiceType, instance.Version)
+		if err != nil {
+			return fmt.Errorf("failed to get service spec: %w", err)
+		}
+
+		if len(spec.InitContainers) > 0 {
+			if err := m.runInitContainers(spec, instance.Name); err != nil {
+				return fmt.Errorf("failed to run init containers: %w", err)
+			}
+		} else {
+			color.Yellow("⚠️  No init containers defined for this service")
+		}
+	}
+
+	// Restart all containers
 	for i := range instance.Containers {
 		container := &instance.Containers[i]
 
@@ -876,4 +918,132 @@ func (m *Manager) GetContainerLogs(instanceName, containerName string, follow bo
 	}
 
 	return logs.String(), nil
+}
+
+// runInitContainers runs init containers in dependency order
+// Init containers run once to completion (e.g., migrations, setup scripts)
+func (m *Manager) runInitContainers(spec *types.ServiceSpec, instanceName string) error {
+	fmt.Println()
+	color.Cyan("Running init containers...")
+	fmt.Println()
+
+	// Sort init containers by dependencies
+	sorted, err := m.sortInitContainers(spec.InitContainers)
+	if err != nil {
+		return err
+	}
+
+	// Run each init container in order
+	for _, initContainer := range sorted {
+		fmt.Printf("Running %s...\n", initContainer.Name)
+
+		// Prepare command
+		cmd := initContainer.Command
+		if len(cmd) == 0 {
+			return fmt.Errorf("init container %s has no command", initContainer.Name)
+		}
+
+		// Prepare environment
+		env := make([]string, 0, len(initContainer.Environment))
+		for k, v := range initContainer.Environment {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+
+		// Run container with --rm flag (auto-remove after completion)
+		containerName := fmt.Sprintf("doku-%s-init-%s", instanceName, initContainer.Name)
+
+		// Check if image exists locally first
+		imageExists, err := m.dockerClient.ImageExists(initContainer.Image)
+		if err != nil {
+			return fmt.Errorf("failed to check image existence for init container %s: %w", initContainer.Image, err)
+		}
+
+		if imageExists {
+			fmt.Printf("  Using cached init image %s\n", initContainer.Image)
+		} else {
+			// Pull image if not in cache
+			fmt.Printf("  Pulling init image %s...\n", initContainer.Image)
+			if err := m.dockerClient.ImagePull(initContainer.Image); err != nil {
+				return fmt.Errorf("failed to pull init container image %s: %w", initContainer.Image, err)
+			}
+		}
+
+		// Create and start the container
+		containerID, err := m.dockerClient.RunContainer(
+			initContainer.Image,
+			containerName,
+			cmd,
+			env,
+			"doku-network",
+			true, // auto-remove after completion
+		)
+		if err != nil {
+			return fmt.Errorf("failed to run init container %s: %w", initContainer.Name, err)
+		}
+
+		// Wait for container to complete
+		if err := m.dockerClient.WaitForContainer(containerID); err != nil {
+			// Get logs for debugging
+			logs, _ := m.dockerClient.GetContainerLogsString(containerID)
+			return fmt.Errorf("init container %s failed: %w\nLogs:\n%s", initContainer.Name, err, logs)
+		}
+
+		color.Green("✓ %s completed", initContainer.Name)
+	}
+
+	fmt.Println()
+	return nil
+}
+
+// sortInitContainers sorts init containers by dependencies
+func (m *Manager) sortInitContainers(initContainers []types.InitContainer) ([]types.InitContainer, error) {
+	// Build dependency graph
+	graph := make(map[string][]string)
+	containerMap := make(map[string]types.InitContainer)
+
+	for _, container := range initContainers {
+		graph[container.Name] = container.DependsOn
+		containerMap[container.Name] = container
+	}
+
+	// Topological sort
+	var result []types.InitContainer
+	visited := make(map[string]bool)
+	visiting := make(map[string]bool)
+
+	var visit func(string) error
+	visit = func(name string) error {
+		if visiting[name] {
+			return fmt.Errorf("circular dependency detected in init containers: %s", name)
+		}
+		if visited[name] {
+			return nil
+		}
+
+		visiting[name] = true
+
+		// Visit dependencies first
+		for _, dep := range graph[name] {
+			if err := visit(dep); err != nil {
+				return err
+			}
+		}
+
+		visiting[name] = false
+		visited[name] = true
+		result = append(result, containerMap[name])
+
+		return nil
+	}
+
+	// Visit all containers
+	for _, container := range initContainers {
+		if !visited[container.Name] {
+			if err := visit(container.Name); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return result, nil
 }

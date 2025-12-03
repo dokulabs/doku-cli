@@ -11,6 +11,7 @@ import (
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/dns"
 	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/envfile"
 	"github.com/dokulabs/doku-cli/internal/monitoring"
 	"github.com/dokulabs/doku-cli/pkg/types"
 	"github.com/fatih/color"
@@ -266,7 +267,17 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 	// Build service URL
 	serviceURL := i.buildServiceURL(instanceName)
 
-	// Create instance record
+	// Save environment to env file
+	envMgr := envfile.NewManager(i.configMgr.GetDokuDir())
+	envPath := envMgr.GetServiceEnvPath(instanceName, "")
+	if err := envMgr.Save(envPath, env); err != nil {
+		// Cleanup on failure
+		networkMgr.DisconnectContainer("doku-network", containerName, true)
+		i.dockerClient.ContainerRemove(containerName, true)
+		return nil, fmt.Errorf("failed to save environment file: %w", err)
+	}
+
+	// Create instance record (Environment field kept for backward compatibility but not primary source)
 	instance := &types.Instance{
 		Name:             instanceName,
 		ServiceType:      opts.ServiceName,
@@ -277,7 +288,7 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		IsMultiContainer: false,       // Phase 3: Single-container
 		URL:              serviceURL,
 		ConnectionString: i.buildConnectionString(instanceName, spec, env),
-		Environment:      env,
+		Environment:      env, // Kept for backward compatibility during migration
 		Volumes:          opts.Volumes,
 		Resources: types.ResourceConfig{
 			MemoryLimit: memoryLimit,

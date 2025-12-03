@@ -9,6 +9,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/dokulabs/doku-cli/internal/dependencies"
 	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/envfile"
 	"github.com/dokulabs/doku-cli/internal/monitoring"
 	"github.com/dokulabs/doku-cli/pkg/types"
 	"github.com/fatih/color"
@@ -146,6 +147,14 @@ func (i *Installer) installMultiContainer(
 		if cfg.Monitoring.Enabled && cfg.Monitoring.Tool != "none" {
 			monitoringEnv := monitoring.GetInstrumentationEnv(instanceName, &cfg.Monitoring)
 			env = i.mergeEnvironment(env, monitoringEnv)
+		}
+
+		// Save container environment to env file
+		envMgr := envfile.NewManager(i.configMgr.GetDokuDir())
+		containerEnvPath := envMgr.GetServiceEnvPath(instanceName, containerSpec.Name)
+		if err := envMgr.Save(containerEnvPath, env); err != nil {
+			i.cleanupMultiContainerInstall(instance)
+			return nil, fmt.Errorf("failed to save environment file for %s: %w", containerSpec.Name, err)
 		}
 
 		// Check if image exists locally first

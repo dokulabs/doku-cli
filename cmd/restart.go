@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
+	"github.com/dokulabs/doku-cli/internal/envfile"
 	"github.com/dokulabs/doku-cli/internal/project"
 	"github.com/dokulabs/doku-cli/pkg/types"
 	"github.com/fatih/color"
@@ -12,7 +15,9 @@ import (
 )
 
 var (
-	restartPort int
+	restartPort    int
+	restartRunInit bool
+	restartEnv     []string
 )
 
 var restartCmd = &cobra.Command{
@@ -20,12 +25,19 @@ var restartCmd = &cobra.Command{
 	Short: "Restart a service",
 	Long: `Restart a service instance.
 
-The service will be stopped and then started again.
-This is useful when you need to apply configuration changes or recover from errors.
+The service will be stopped and then started again. Environment variables are
+always loaded from the service's env file (~/.doku/services/<service>.env).
+
+You can update environment variables while restarting:
+  doku restart postgres --env POSTGRES_PASSWORD=newpass
 
 You can also change the port mapping when restarting:
   doku restart postgres --port 5432   # Add or change port mapping
-  doku restart postgres --port 0      # Remove port mapping`,
+  doku restart postgres --port 0      # Remove port mapping
+
+For multi-container services with init containers (e.g., database migrations),
+use the --run-init flag to run init containers before restarting:
+  doku restart signoz --run-init      # Run migrations before restart`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRestart,
 }
@@ -34,6 +46,8 @@ func init() {
 	rootCmd.AddCommand(restartCmd)
 
 	restartCmd.Flags().IntVarP(&restartPort, "port", "p", -1, "Change host port mapping (0 to remove, -1 to keep current)")
+	restartCmd.Flags().BoolVar(&restartRunInit, "run-init", false, "Run init containers before restarting (for multi-container services)")
+	restartCmd.Flags().StringSliceVarP(&restartEnv, "env", "e", []string{}, "Update environment variables (KEY=VALUE), saved to env file")
 }
 
 func runRestart(cmd *cobra.Command, args []string) error {
@@ -72,7 +86,40 @@ func runRestart(cmd *cobra.Command, args []string) error {
 
 	// Check if it's a custom project
 	if instance.ServiceType == "custom-project" {
-		return restartProject(instanceName, dockerClient, cfgMgr)
+		if restartRunInit {
+			return fmt.Errorf("--run-init is not supported for custom projects")
+		}
+		return restartProject(instanceName, dockerClient, cfgMgr, restartEnv)
+	}
+
+	// Initialize catalog manager if --run-init is requested
+	var catalogMgr *catalog.Manager
+	if restartRunInit {
+		catalogMgr = catalog.NewManager(cfgMgr.GetCatalogDir())
+		if !catalogMgr.CatalogExists() {
+			return fmt.Errorf("catalog not found. Run 'doku catalog update' first")
+		}
+	}
+
+	// Update env file if --env flags were provided
+	envMgr := envfile.NewManager(cfgMgr.GetDokuDir())
+	if len(restartEnv) > 0 {
+		// Parse env flags
+		envUpdates := make(map[string]string)
+		for _, e := range restartEnv {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid environment variable format: %s (expected KEY=VALUE)", e)
+			}
+			envUpdates[parts[0]] = parts[1]
+		}
+
+		// Update env file
+		envPath := envMgr.GetServiceEnvPath(instanceName, "")
+		if err := envfile.UpdateEnvFile(envPath, envUpdates); err != nil {
+			return fmt.Errorf("failed to update environment file: %w", err)
+		}
+		color.Green("✓ Updated environment file")
 	}
 
 	fmt.Printf("Restarting %s...\n", color.CyanString(instanceName))
@@ -92,13 +139,13 @@ func runRestart(cmd *cobra.Command, args []string) error {
 			}
 		} else {
 			// Same port, just do normal restart
-			if err := serviceMgr.Restart(instanceName); err != nil {
+			if err := serviceMgr.RestartWithInit(instanceName, restartRunInit, catalogMgr); err != nil {
 				return fmt.Errorf("failed to restart service: %w", err)
 			}
 		}
 	} else {
 		// No port change, just restart
-		if err := serviceMgr.Restart(instanceName); err != nil {
+		if err := serviceMgr.RestartWithInit(instanceName, restartRunInit, catalogMgr); err != nil {
 			return fmt.Errorf("failed to restart service: %w", err)
 		}
 	}
@@ -136,7 +183,7 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func restartProject(projectName string, dockerClient *docker.Client, cfgMgr *config.Manager) error {
+func restartProject(projectName string, dockerClient *docker.Client, cfgMgr *config.Manager, envFlags []string) error {
 	projectMgr, err := project.NewManager(dockerClient, cfgMgr)
 	if err != nil {
 		return fmt.Errorf("failed to initialize project manager: %w", err)
@@ -146,6 +193,27 @@ func restartProject(projectName string, dockerClient *docker.Client, cfgMgr *con
 	proj, err := projectMgr.Get(projectName)
 	if err != nil {
 		return fmt.Errorf("'%s' not found. Use 'doku list' or 'doku project list' to see installed services", projectName)
+	}
+
+	// Update env file if --env flags were provided
+	envMgr := envfile.NewManager(cfgMgr.GetDokuDir())
+	if len(envFlags) > 0 {
+		// Parse env flags
+		envUpdates := make(map[string]string)
+		for _, e := range envFlags {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid environment variable format: %s (expected KEY=VALUE)", e)
+			}
+			envUpdates[parts[0]] = parts[1]
+		}
+
+		// Update env file
+		envPath := envMgr.GetProjectEnvPath(projectName)
+		if err := envfile.UpdateEnvFile(envPath, envUpdates); err != nil {
+			return fmt.Errorf("failed to update environment file: %w", err)
+		}
+		color.Green("✓ Updated environment file")
 	}
 
 	fmt.Printf("Restarting %s...\n", color.CyanString(projectName))
