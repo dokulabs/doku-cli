@@ -872,6 +872,10 @@ func (m *Manager) recreateContainer(instance *types.Instance, oldContainerInfo *
 		Env:          oldContainerInfo.Config.Env,
 		Labels:       oldContainerInfo.Config.Labels,
 		ExposedPorts: exposedPorts,
+		Cmd:          oldContainerInfo.Config.Cmd,
+		Entrypoint:   oldContainerInfo.Config.Entrypoint,
+		WorkingDir:   oldContainerInfo.Config.WorkingDir,
+		User:         oldContainerInfo.Config.User,
 	}
 
 	// Convert MountPoints to Mounts - handle volume mounts correctly
