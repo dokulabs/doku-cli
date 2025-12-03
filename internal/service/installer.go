@@ -620,10 +620,10 @@ func (i *Installer) updateDNS(instanceName string) error {
 
 // ExistingData holds information about existing volumes and env files
 type ExistingData struct {
-	Volumes      []string // List of existing volume names
-	EnvFiles     []string // List of existing env file paths
-	HasData      bool     // True if any existing data was found
-	EnvVars      map[string]string // Existing env variables (if env file exists)
+	Volumes  []string          // List of existing volume names
+	EnvFiles []string          // List of existing env file paths
+	HasData  bool              // True if any existing data was found
+	EnvVars  map[string]string // Existing env variables (if env file exists)
 }
 
 // checkExistingData checks for existing volumes and env files for an instance

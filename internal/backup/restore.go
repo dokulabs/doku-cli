@@ -22,7 +22,7 @@ type RestoreOptions struct {
 
 // RestoreResult contains information about the restore operation
 type RestoreResult struct {
-	InstanceName    string
+	InstanceName     string
 	RestoredEnvFiles []string
 	RestoredVolumes  []string
 	Warnings         []string
@@ -52,7 +52,7 @@ func (m *Manager) Restore(opts RestoreOptions) (*RestoreResult, error) {
 	}
 
 	result := &RestoreResult{
-		InstanceName:    opts.InstanceName,
+		InstanceName:     opts.InstanceName,
 		RestoredEnvFiles: []string{},
 		RestoredVolumes:  []string{},
 		Warnings:         []string{},

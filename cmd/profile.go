@@ -91,10 +91,10 @@ Example:
 }
 
 var (
-	profileName       string
-	profileDev        bool
-	profileProd       bool
-	profileForce      bool
+	profileName  string
+	profileDev   bool
+	profileProd  bool
+	profileForce bool
 )
 
 func init() {

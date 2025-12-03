@@ -414,4 +414,3 @@ func getConnectionExample(serviceType, hostname string, port int) string {
 		return fmt.Sprintf("http://%s:%d", hostname, port)
 	}
 }
-

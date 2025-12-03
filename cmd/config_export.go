@@ -16,26 +16,26 @@ import (
 
 // ExportConfig represents the exported configuration
 type ExportConfig struct {
-	Version     string                    `json:"version" yaml:"version"`
-	ExportedAt  time.Time                 `json:"exported_at" yaml:"exported_at"`
-	Preferences *types.PreferencesConfig  `json:"preferences,omitempty" yaml:"preferences,omitempty"`
+	Version     string                     `json:"version" yaml:"version"`
+	ExportedAt  time.Time                  `json:"exported_at" yaml:"exported_at"`
+	Preferences *types.PreferencesConfig   `json:"preferences,omitempty" yaml:"preferences,omitempty"`
 	Network     *types.NetworkGlobalConfig `json:"network,omitempty" yaml:"network,omitempty"`
 	Traefik     *types.TraefikGlobalConfig `json:"traefik,omitempty" yaml:"traefik,omitempty"`
-	Monitoring  *types.MonitoringConfig   `json:"monitoring,omitempty" yaml:"monitoring,omitempty"`
+	Monitoring  *types.MonitoringConfig    `json:"monitoring,omitempty" yaml:"monitoring,omitempty"`
 	Instances   map[string]*ExportInstance `json:"instances,omitempty" yaml:"instances,omitempty"`
-	Projects    map[string]*ExportProject `json:"projects,omitempty" yaml:"projects,omitempty"`
+	Projects    map[string]*ExportProject  `json:"projects,omitempty" yaml:"projects,omitempty"`
 }
 
 // ExportInstance represents an exported service instance (without sensitive data)
 type ExportInstance struct {
-	ServiceType  string            `json:"service_type" yaml:"service_type"`
-	Version      string            `json:"version" yaml:"version"`
-	Environment  map[string]string `json:"environment,omitempty" yaml:"environment,omitempty"`
-	Volumes      map[string]string `json:"volumes,omitempty" yaml:"volumes,omitempty"`
-	Network      types.NetworkConfig `json:"network" yaml:"network"`
-	Resources    types.ResourceConfig `json:"resources,omitempty" yaml:"resources,omitempty"`
+	ServiceType  string                      `json:"service_type" yaml:"service_type"`
+	Version      string                      `json:"version" yaml:"version"`
+	Environment  map[string]string           `json:"environment,omitempty" yaml:"environment,omitempty"`
+	Volumes      map[string]string           `json:"volumes,omitempty" yaml:"volumes,omitempty"`
+	Network      types.NetworkConfig         `json:"network" yaml:"network"`
+	Resources    types.ResourceConfig        `json:"resources,omitempty" yaml:"resources,omitempty"`
 	Traefik      types.TraefikInstanceConfig `json:"traefik" yaml:"traefik"`
-	Dependencies []string          `json:"dependencies,omitempty" yaml:"dependencies,omitempty"`
+	Dependencies []string                    `json:"dependencies,omitempty" yaml:"dependencies,omitempty"`
 }
 
 // ExportProject represents an exported project configuration
@@ -48,9 +48,9 @@ type ExportProject struct {
 }
 
 var (
-	exportOutput      string
-	exportFormat      string
-	exportIncludeEnv  bool
+	exportOutput       string
+	exportFormat       string
+	exportIncludeEnv   bool
 	exportServicesOnly bool
 )
 
