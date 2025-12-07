@@ -105,13 +105,13 @@ type ServiceConfiguration struct {
 
 // ConfigOption represents a single configuration option
 type ConfigOption struct {
-	Name        string   `toml:"name" yaml:"name"`                                // Option name
-	Description string   `toml:"description" yaml:"description"`                  // Option description
-	Type        string   `toml:"type" yaml:"type"`                                // string, int, bool, select
-	Default     string   `toml:"default" yaml:"default"`                          // Default value
-	Required    bool     `toml:"required" yaml:"required"`                        // Whether required
-	EnvVar      string   `toml:"env_var" yaml:"env_var"`                          // Environment variable name
-	Options     []string `toml:"options,omitempty" yaml:"options,omitempty"`      // For select type
+	Name        string   `toml:"name" yaml:"name"`                                 // Option name
+	Description string   `toml:"description" yaml:"description"`                   // Option description
+	Type        string   `toml:"type" yaml:"type"`                                 // string, int, bool, select
+	Default     string   `toml:"default" yaml:"default"`                           // Default value
+	Required    bool     `toml:"required" yaml:"required"`                         // Whether required
+	EnvVar      string   `toml:"env_var" yaml:"env_var"`                           // Environment variable name
+	Options     []string `toml:"options,omitempty" yaml:"options,omitempty"`       // For select type
 	Validation  string   `toml:"validation,omitempty" yaml:"validation,omitempty"` // Validation regex
 }
 
