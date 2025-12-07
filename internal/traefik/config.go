@@ -72,6 +72,9 @@ func (m *Manager) generateConfigContent(config Config) string {
 	// HTTP entry point
 	content += "  web:\n"
 	content += fmt.Sprintf("    address: \":%d\"\n", config.HTTPPort)
+	// Forward proxy headers from trusted sources
+	content += "    forwardedHeaders:\n"
+	content += "      insecure: true\n"
 
 	if config.Protocol == "https" {
 		// Redirect HTTP to HTTPS
@@ -85,6 +88,9 @@ func (m *Manager) generateConfigContent(config Config) string {
 		// HTTPS entry point
 		content += "  websecure:\n"
 		content += fmt.Sprintf("    address: \":%d\"\n", config.HTTPSPort)
+		// Forward proxy headers from trusted sources
+		content += "    forwardedHeaders:\n"
+		content += "      insecure: true\n"
 		content += "    http:\n"
 		content += "      tls: {}\n"
 		content += "\n"
