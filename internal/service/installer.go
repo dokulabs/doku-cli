@@ -7,6 +7,7 @@ import (
 
 	dockerTypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
 	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/config"
@@ -278,32 +279,36 @@ func (i *Installer) Install(opts InstallOptions) (*types.Instance, error) {
 		return nil, fmt.Errorf("failed to apply resource limits: %w", err)
 	}
 
-	// Create container
-	fmt.Printf("Creating container %s...\n", instanceName)
-	containerID, err := i.dockerClient.ContainerCreate(
-		containerConfig,
-		hostConfig,
-		nil,
-		containerName,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create container: %w", err)
-	}
-
-	// Connect to doku-network with aliases
-	networkMgr := docker.NewNetworkManager(i.dockerClient)
-
 	// Build network aliases: service name and instance name
 	aliases := []string{opts.ServiceName}
 	if instanceName != opts.ServiceName {
 		aliases = append(aliases, instanceName)
 	}
 
-	if err := networkMgr.ConnectContainerWithAliases("doku-network", containerID, aliases); err != nil {
-		// Cleanup on failure
-		i.dockerClient.ContainerRemove(containerName, true)
-		return nil, fmt.Errorf("failed to connect to network: %w", err)
+	// Create network configuration to connect to doku-network during container creation
+	// This is more reliable than connecting after creation
+	networkConfig := &network.NetworkingConfig{
+		EndpointsConfig: map[string]*network.EndpointSettings{
+			"doku-network": {
+				Aliases: aliases,
+			},
+		},
 	}
+
+	// Create container with network config
+	fmt.Printf("Creating container %s...\n", instanceName)
+	containerID, err := i.dockerClient.ContainerCreate(
+		containerConfig,
+		hostConfig,
+		networkConfig,
+		containerName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create container: %w", err)
+	}
+
+	// Network manager for cleanup operations
+	networkMgr := docker.NewNetworkManager(i.dockerClient)
 
 	// Start container
 	fmt.Printf("Starting container...\n")

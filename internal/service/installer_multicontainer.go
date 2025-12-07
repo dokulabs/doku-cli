@@ -7,6 +7,7 @@ import (
 
 	dockerTypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/dokulabs/doku-cli/internal/dependencies"
 	"github.com/dokulabs/doku-cli/internal/docker"
 	"github.com/dokulabs/doku-cli/internal/envfile"
@@ -236,11 +237,24 @@ func (i *Installer) installMultiContainer(
 			}
 		}
 
-		// Create container
+		// Build network aliases for this container
+		aliases := i.buildNetworkAliases(instanceName, containerSpec.Name, isPrimary)
+
+		// Create network configuration to connect to doku-network during container creation
+		// This is more reliable than connecting after creation
+		networkConfig := &network.NetworkingConfig{
+			EndpointsConfig: map[string]*network.EndpointSettings{
+				"doku-network": {
+					Aliases: aliases,
+				},
+			},
+		}
+
+		// Create container with network config
 		containerID, err := i.dockerClient.ContainerCreate(
 			containerConfig,
 			hostConfig,
-			nil,
+			networkConfig,
 			containerName,
 		)
 		if err != nil {
@@ -248,13 +262,8 @@ func (i *Installer) installMultiContainer(
 			return nil, fmt.Errorf("failed to create container %s: %w", containerSpec.Name, err)
 		}
 
-		// Connect to doku-network with aliases BEFORE starting
-		networkMgr := docker.NewNetworkManager(i.dockerClient)
-		aliases := i.buildNetworkAliases(instanceName, containerSpec.Name, isPrimary)
-		if err := networkMgr.ConnectContainerWithAliases("doku-network", containerID, aliases); err != nil {
-			i.cleanupMultiContainerInstall(instance)
-			return nil, fmt.Errorf("failed to connect container %s to network: %w", containerSpec.Name, err)
-		}
+		// Network manager for cleanup operations (if needed later)
+		_ = docker.NewNetworkManager(i.dockerClient)
 
 		// Add to instance
 		instance.Containers = append(instance.Containers, types.ContainerInfo{

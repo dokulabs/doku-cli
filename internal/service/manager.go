@@ -9,6 +9,7 @@ import (
 	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
 	"github.com/dokulabs/doku-cli/internal/catalog"
 	"github.com/dokulabs/doku-cli/internal/config"
@@ -905,11 +906,27 @@ func (m *Manager) recreateContainer(instance *types.Instance, oldContainerInfo *
 		Resources:     oldContainerInfo.HostConfig.Resources,
 	}
 
-	// Create container
+	// Restore network aliases from labels
+	aliases := []string{instance.ServiceType}
+	if instance.Name != instance.ServiceType {
+		aliases = append(aliases, instance.Name)
+	}
+
+	// Create network configuration to connect to doku-network during container creation
+	// This is more reliable than connecting after creation
+	networkConfig := &network.NetworkingConfig{
+		EndpointsConfig: map[string]*network.EndpointSettings{
+			"doku-network": {
+				Aliases: aliases,
+			},
+		},
+	}
+
+	// Create container with network config
 	containerID, err := m.dockerClient.ContainerCreate(
 		containerConfig,
 		hostConfig,
-		nil,
+		networkConfig,
 		instance.ContainerName,
 	)
 	if err != nil {
@@ -919,20 +936,8 @@ func (m *Manager) recreateContainer(instance *types.Instance, oldContainerInfo *
 	// Update container ID
 	instance.ContainerID = containerID
 
-	// Connect to network with aliases
+	// Network manager for cleanup operations
 	networkMgr := docker.NewNetworkManager(m.dockerClient)
-
-	// Restore network aliases from labels
-	aliases := []string{instance.ServiceType}
-	if instance.Name != instance.ServiceType {
-		aliases = append(aliases, instance.Name)
-	}
-
-	if err := networkMgr.ConnectContainerWithAliases("doku-network", containerID, aliases); err != nil {
-		// Cleanup on failure
-		m.dockerClient.ContainerRemove(instance.ContainerName, true)
-		return fmt.Errorf("failed to connect to network: %w", err)
-	}
 
 	// Start container
 	if err := m.dockerClient.ContainerStart(containerID); err != nil {
