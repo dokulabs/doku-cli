@@ -22,23 +22,30 @@ var (
 
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
-	Short: "Uninstall Doku and clean up containers",
-	Long: `Uninstall Doku and clean up containers and configuration.
+	Short: "Completely uninstall Doku and all services (DANGER)",
+	Long: `⚠️  DANGER: Completely uninstall Doku from your system.
 
-This will remove:
-  • Docker containers (Traefik and all services)
-  • Docker network
+THIS IS NOT A SERVICE REMOVAL COMMAND!
+This will remove the Doku CLI itself and ALL installed services.
+This action CANNOT be undone.
+
+To remove a single service, use: doku remove <service-name>
+
+The following will be PERMANENTLY REMOVED:
+  • All Docker containers managed by Doku (Traefik + all services)
+  • Doku Docker network
+  • Doku CLI binary
   • Configuration file (~/.doku/config.toml)
   • SSL certificates
 
-Data is preserved for safety:
+Data preserved for safety:
   • Docker volumes (your data) are NOT removed
   • Environment files (~/.doku/services/*.env) are NOT removed
 
 After uninstall, manual cleanup instructions will be shown if you want to
 permanently delete the data.
 
-Use --force to skip confirmation prompts.
+Use --force to skip confirmation prompts (use with caution!).
 Use --all to also show instructions for removing mkcert CA certificates.`,
 	RunE: runUninstall,
 }
@@ -54,27 +61,49 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 	// Colors
 	red := color.New(color.FgRed, color.Bold).SprintFunc()
+	redBg := color.New(color.BgRed, color.FgWhite, color.Bold).SprintFunc()
 	yellow := color.New(color.FgYellow).SprintFunc()
 	green := color.New(color.FgGreen).SprintFunc()
 	cyan := color.New(color.FgCyan).SprintFunc()
+	bold := color.New(color.Bold).SprintFunc()
 
-	fmt.Printf("\n%s\n\n", yellow("⚠️  Doku Uninstall"))
-	fmt.Println("This will remove:")
-	fmt.Printf("  • All Docker containers managed by Doku\n")
-	fmt.Printf("  • Doku Docker network\n")
-	fmt.Printf("  • Configuration file (~/.doku/config.toml)\n")
-	fmt.Printf("  • SSL certificates\n")
+	// Danger zone warning
+	fmt.Println()
+	fmt.Println(redBg("                                                                "))
+	fmt.Println(redBg("   ⚠️  DANGER ZONE - COMPLETE DOKU UNINSTALLATION                "))
+	fmt.Println(redBg("                                                                "))
+	fmt.Println()
+
+	fmt.Println(red("╔════════════════════════════════════════════════════════════════╗"))
+	fmt.Println(red("║") + bold("  WARNING: This is NOT a service/tool removal command!         ") + red("║"))
+	fmt.Println(red("║                                                                ║"))
+	fmt.Println(red("║") + "  This will " + red("COMPLETELY UNINSTALL DOKU") + " from your system,        " + red("║"))
+	fmt.Println(red("║") + "  including the Doku CLI itself and ALL installed services.    " + red("║"))
+	fmt.Println(red("║                                                                ║"))
+	fmt.Println(red("║") + "  " + red("⚠️  THIS ACTION CANNOT BE UNDONE!") + "                            " + red("║"))
+	fmt.Println(red("╚════════════════════════════════════════════════════════════════╝"))
+	fmt.Println()
+
+	fmt.Println(red("The following will be PERMANENTLY REMOVED:"))
+	fmt.Printf("  %s All Docker containers managed by Doku (Traefik + all services)\n", red("✗"))
+	fmt.Printf("  %s Doku Docker network\n", red("✗"))
+	fmt.Printf("  %s Doku CLI binary\n", red("✗"))
+	fmt.Printf("  %s Configuration file (~/.doku/config.toml)\n", red("✗"))
+	fmt.Printf("  %s SSL certificates\n", red("✗"))
 	fmt.Println()
 	fmt.Println(green("Data preserved for safety:"))
-	fmt.Printf("  • Docker volumes (your data)\n")
-	fmt.Printf("  • Environment files (~/.doku/services/*.env)\n")
+	fmt.Printf("  %s Docker volumes (your data)\n", green("✓"))
+	fmt.Printf("  %s Environment files (~/.doku/services/*.env)\n", green("✓"))
+	fmt.Println()
+
+	fmt.Println(yellow("💡 Tip: To remove a single service, use: doku remove <service-name>"))
 	fmt.Println()
 
 	// Confirmation
 	if !uninstallForce {
 		confirm := false
 		prompt := &survey.Confirm{
-			Message: "Are you sure you want to uninstall Doku?",
+			Message: red("Are you ABSOLUTELY SURE you want to uninstall Doku completely?"),
 			Default: false,
 		}
 		if err := survey.AskOne(prompt, &confirm); err != nil {
@@ -82,7 +111,22 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		}
 
 		if !confirm {
-			fmt.Println(yellow("Uninstall cancelled"))
+			fmt.Println(green("✓ Uninstall cancelled - Doku is still installed"))
+			return nil
+		}
+
+		// Second confirmation for extra safety
+		fmt.Println()
+		confirmText := ""
+		textPrompt := &survey.Input{
+			Message: red("Type 'uninstall doku' to confirm:"),
+		}
+		if err := survey.AskOne(textPrompt, &confirmText); err != nil {
+			return fmt.Errorf("prompt failed: %w", err)
+		}
+
+		if strings.ToLower(strings.TrimSpace(confirmText)) != "uninstall doku" {
+			fmt.Println(green("✓ Uninstall cancelled - Doku is still installed"))
 			return nil
 		}
 	}
