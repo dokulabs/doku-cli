@@ -80,6 +80,10 @@ func (m *Manager) StartContainer() error {
 	// Prepare container configuration
 	config := &container.Config{
 		Image: TraefikImage,
+		ExposedPorts: nat.PortSet{
+			"80/tcp":  struct{}{},
+			"443/tcp": struct{}{},
+		},
 		Labels: map[string]string{
 			"managed-by":     "doku",
 			"doku.component": "traefik",
