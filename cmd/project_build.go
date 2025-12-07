@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/dokulabs/doku-cli/internal/config"
 	"github.com/dokulabs/doku-cli/internal/docker"
@@ -84,17 +85,40 @@ func projectBuildRun(cmd *cobra.Command, args []string) error {
 	cyan.Printf("  Path: %s\n", proj.Path)
 	cyan.Printf("  Dockerfile: %s\n", proj.Dockerfile)
 
-	// Note: .env.doku variables are for runtime, not build time
-	// They will be applied when the container starts
-	// If you need build-time variables, declare them as ARG in your Dockerfile
+	// Load environment variables from .env.doku for build args
+	// These are passed as both build args (for Next.js, etc.) and runtime env vars
+	buildArgs := make(map[string]string)
+
+	// First load from .env.doku file if it exists
+	envDokuPath := filepath.Join(proj.Path, ".env.doku")
+	if project.FileExists(envDokuPath) {
+		color.Cyan("  Loading build args from .env.doku")
+		fileEnv, err := project.LoadEnvFile(envDokuPath)
+		if err != nil {
+			color.Yellow("  ⚠️  Warning: Failed to load .env.doku: %v", err)
+		} else {
+			for key, value := range fileEnv {
+				buildArgs[key] = value
+			}
+			fmt.Printf("  Loaded %d variables as build args\n", len(fileEnv))
+		}
+	}
+
+	// Also include any environment variables stored in project config
+	for key, value := range proj.Environment {
+		// Skip internal DOKU_ variables
+		if len(key) < 5 || key[:5] != "DOKU_" {
+			buildArgs[key] = value
+		}
+	}
 
 	// Build project
 	opts := project.BuildOptions{
-		Name:    projectName,
-		NoCache: projectBuildNoCache,
-		Pull:    projectBuildPull,
-		Tag:     projectBuildTag,
-		// BuildArgs intentionally empty - use ARG in Dockerfile for build-time vars
+		Name:      projectName,
+		NoCache:   projectBuildNoCache,
+		Pull:      projectBuildPull,
+		Tag:       projectBuildTag,
+		BuildArgs: buildArgs,
 	}
 
 	if err := projectMgr.Build(opts); err != nil {
